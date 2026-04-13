@@ -52,6 +52,7 @@ export interface Knight {
   image_url?: string
   img_skill_1?: string
   img_skill_2?: string
+  grade?: 'gold++' | 'gold+' | 'gold' | 'blue' | 'green' | 'white'
 }
 
 export interface GVGDefense {

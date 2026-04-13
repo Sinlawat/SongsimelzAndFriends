@@ -17,6 +17,36 @@ type ElementFilter = KnightElement | 'all'
 
 const ELEMENTS: KnightElement[] = ['magic', 'physical', 'tank', 'support', 'balance']
 
+const GRADES = ['gold++', 'gold+', 'gold', 'blue', 'green', 'white'] as const
+type Grade = typeof GRADES[number]
+
+const GRADE_COLORS: Record<string, string> = {
+  'gold++': '#f59e0b',
+  'gold+':  '#fbbf24',
+  'gold':   '#d97706',
+  'blue':   '#3b82f6',
+  'green':  '#22c55e',
+  'white':  '#e2e8f0',
+}
+
+const GRADE_BG: Record<string, string> = {
+  'gold++': '#451a03',
+  'gold+':  '#3d2200',
+  'gold':   '#2d1a00',
+  'blue':   '#1e3a5f',
+  'green':  '#14532d',
+  'white':  '#1f2937',
+}
+
+const GRADE_SORT: Record<string, number> = {
+  'gold++': 0,
+  'gold+':  1,
+  'gold':   2,
+  'blue':   3,
+  'green':  4,
+  'white':  5,
+}
+
 // ─── Knight card ─────────────────────────────────────────────────────────────
 
 interface KnightCardProps {
@@ -87,14 +117,18 @@ function KnightCard({ knight, onClick }: KnightCardProps) {
         right: 0,
         padding: '4px 4px 5px',
         background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
-        fontSize: '10px',
-        color: 'white',
-        textAlign: 'center',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
       }}>
-        {knight.name}
+        {/* Knight name */}
+        <div style={{
+          fontSize: '10px',
+          color: 'white',
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>
+          {knight.name}
+        </div>
       </div>
     </button>
   )
@@ -164,6 +198,7 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
   const [loading, setLoading]       = useState(false)
   const [search, setSearch]         = useState('')
   const [elementFilter, setElementFilter] = useState<ElementFilter>('all')
+  const [gradeFilters, setGradeFilters] = useState<Grade[]>([])
 
   const overlayRef = useRef<HTMLDivElement>(null)
   const searchRef  = useRef<HTMLInputElement>(null)
@@ -175,7 +210,7 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
     setLoading(true)
     supabase
       .from('knights')
-      .select('*, img_skill_1, img_skill_2')
+      .select('id, name, element, class, stars, image_url, img_skill_1, img_skill_2, grade')
       .order('name')
       .then(({ data, error }) => {
         if (!error && data) {
@@ -191,6 +226,7 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
     if (isOpen) {
       setSearch('')
       setElementFilter('all')
+      setGradeFilters([])
       setTimeout(() => searchRef.current?.focus(), 80)
     }
   }, [isOpen])
@@ -204,14 +240,27 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
   }, [isOpen, onClose])
 
 
+  const toggleGrade = (grade: Grade) => {
+    setGradeFilters(prev =>
+      prev.includes(grade) ? prev.filter(g => g !== grade) : [...prev, grade]
+    )
+  }
+
   // Client-side filtering
   const filtered = useMemo(() => {
-    return knights.filter(k => {
-      const matchElement = elementFilter === 'all' || k.element === elementFilter
-      const matchSearch  = k.name.toLowerCase().includes(search.toLowerCase())
-      return matchElement && matchSearch
-    })
-  }, [knights, elementFilter, search])
+    return knights
+      .filter(k => {
+        const matchElement = elementFilter === 'all' || k.element === elementFilter
+        const matchGrade   = gradeFilters.length === 0 || gradeFilters.includes(k.grade as Grade)
+        const matchSearch  = k.name.toLowerCase().includes(search.toLowerCase())
+        return matchElement && matchGrade && matchSearch
+      })
+      .sort((a, b) => {
+        const gradeDiff = (GRADE_SORT[a.grade ?? 'white'] ?? 99) - (GRADE_SORT[b.grade ?? 'white'] ?? 99)
+        if (gradeDiff !== 0) return gradeDiff
+        return a.name.localeCompare(b.name)
+      })
+  }, [knights, elementFilter, gradeFilters, search])
 
   function handleSelect(knight: Knight) {
     onSelect(knight)
@@ -339,6 +388,63 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
           })}
         </div>
 
+        {/* ── Grade filter row ────────────────────────────────────────────── */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '8px 16px',
+          flexWrap: 'wrap',
+          borderBottom: '1px solid #1e293b',
+        }}>
+          <span style={{ fontSize: '11px', color: '#6b7280', marginRight: '2px' }}>Grade:</span>
+          {gradeFilters.length > 0 && (
+            <span style={{ fontSize: '10px', color: '#f59e0b', marginRight: '2px' }}>
+              ({gradeFilters.length} selected)
+            </span>
+          )}
+
+          {GRADES.map(grade => {
+            const active = gradeFilters.includes(grade)
+            return (
+              <button
+                key={grade}
+                onClick={() => toggleGrade(grade)}
+                style={{
+                  padding: '3px 12px',
+                  borderRadius: '99px',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  border: active ? `1.5px solid ${GRADE_COLORS[grade]}` : '1.5px solid #374151',
+                  background: active ? GRADE_BG[grade] : 'transparent',
+                  color: active ? GRADE_COLORS[grade] : '#6b7280',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {grade}
+              </button>
+            )
+          })}
+
+          {gradeFilters.length > 0 && (
+            <button
+              onClick={() => setGradeFilters([])}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#6b7280',
+                fontSize: '10px',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                padding: '0 4px',
+              }}
+            >
+              รีเซ็ต
+            </button>
+          )}
+        </div>
+
         {/* ── Knight grid ─────────────────────────────────────────────────── */}
         <div
           className="flex-1 overflow-y-auto"
@@ -379,9 +485,9 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
           <span className="text-xs text-gray-600">
             {filtered.length} / {knights.length} knights
           </span>
-          {(elementFilter !== 'all' || search) && (
+          {(elementFilter !== 'all' || gradeFilters.length > 0 || search) && (
             <button
-              onClick={() => { setElementFilter('all'); setSearch('') }}
+              onClick={() => { setElementFilter('all'); setGradeFilters([]); setSearch('') }}
               className="text-xs font-semibold transition-colors"
               style={{ color: '#4b5563' }}
               onMouseEnter={e => { e.currentTarget.style.color = '#f59e0b' }}

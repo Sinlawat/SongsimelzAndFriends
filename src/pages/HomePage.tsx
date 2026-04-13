@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import KnightAvatar from '../components/gvg/KnightAvatar'
+import { useAdmin } from '../hooks/useAdmin'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,8 +36,10 @@ function SkeletonCard() {
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const [defenses, setDefenses] = useState<DefenseRow[]>([])
-  const [loading,  setLoading]  = useState(true)
+  const { isAdmin } = useAdmin()
+  const [defenses,        setDefenses]        = useState<DefenseRow[]>([])
+  const [loading,         setLoading]         = useState(true)
+  const [deleteDefenseId, setDeleteDefenseId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchDefenses = async () => {
@@ -68,6 +72,19 @@ export default function HomePage() {
     }
     fetchDefenses()
   }, [])
+
+  async function handleDeleteDefense() {
+    if (!deleteDefenseId) return
+    const { error } = await supabase
+      .from('gvg_defenses')
+      .delete()
+      .eq('id', deleteDefenseId)
+
+    if (!error) {
+      setDefenses(prev => prev.filter(d => d.id !== deleteDefenseId))
+    }
+    setDeleteDefenseId(null)
+  }
 
   return (
     <div style={{ backgroundColor: '#0a0c14', minHeight: '100vh', padding: '2rem 1.5rem' }}>
@@ -125,21 +142,33 @@ export default function HomePage() {
                 defense={defense}
                 index={index}
                 onClick={() => navigate('/gvg?defense_id=' + defense.id)}
+                isAdmin={isAdmin}
+                onDelete={() => setDeleteDefenseId(defense.id)}
               />
             ))}
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={deleteDefenseId !== null}
+        onClose={() => setDeleteDefenseId(null)}
+        onConfirm={handleDeleteDefense}
+        title="ลบทีม Defense นี้?"
+        description="การลบทีม Defense จะลบ Counter ทั้งหมดที่เกี่ยวข้องด้วย และไม่สามารถกู้คืนได้"
+      />
     </div>
   )
 }
 
 // ─── Defense card ─────────────────────────────────────────────────────────────
 
-function DefenseCard({ defense, index, onClick }: {
+function DefenseCard({ defense, index, onClick, isAdmin, onDelete }: {
   defense: DefenseRow
   index: number
   onClick: () => void
+  isAdmin?: boolean
+  onDelete?: () => void
 }) {
   const [hovered, setHovered] = useState(false)
 
@@ -149,6 +178,7 @@ function DefenseCard({ defense, index, onClick }: {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
+        position: 'relative',
         background: '#111827',
         border: `1px solid ${hovered ? '#f59e0b44' : '#1e293b'}`,
         borderRadius: '12px',
@@ -159,6 +189,34 @@ function DefenseCard({ defense, index, onClick }: {
         boxShadow: hovered ? '0 8px 24px rgba(0,0,0,0.3)' : 'none',
       }}
     >
+      {isAdmin && (
+        <button
+          onClick={e => { e.stopPropagation(); onDelete?.() }}
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '8px',
+            width: '28px',
+            height: '28px',
+            borderRadius: '6px',
+            background: '#7f1d1d',
+            border: '1px solid #ef444466',
+            color: '#fca5a5',
+            fontSize: '14px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#ef4444' }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#7f1d1d' }}
+          title="ลบทีม Defense"
+        >
+          🗑️
+        </button>
+      )}
       {/* Top row: rank badge + counter count */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
         <div style={{

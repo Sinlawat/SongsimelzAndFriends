@@ -8,6 +8,8 @@ import KnightAvatar from '../components/gvg/KnightAvatar'
 import FormationBoard from '../components/gvg/FormationBoard'
 import ContributeModal from '../components/gvg/ContributeModal'
 import { useAuth } from '../contexts/AuthContext'
+import { useAdmin } from '../hooks/useAdmin'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,7 +98,13 @@ function KnightSelectorButton({ label, knight, onClick, isAnyDefault }: Selector
 
 // ─── Counter Card ─────────────────────────────────────────────────────────────
 
-function CounterCard({ counter, isNewest, onOpenLogin }: { counter: GVGCounter; isNewest?: boolean; onOpenLogin?: () => void }) {
+function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter }: {
+  counter: GVGCounter
+  isNewest?: boolean
+  onOpenLogin?: () => void
+  isAdmin?: boolean
+  onDeleteCounter?: (id: string, defenseId: string) => void
+}) {
   const { user } = useAuth()
   const [isExpanded,      setIsExpanded]      = useState(false)
   const [userVote,        setUserVote]        = useState<'like' | 'dislike' | null>(null)
@@ -414,6 +422,32 @@ function CounterCard({ counter, isNewest, onOpenLogin }: { counter: GVGCounter; 
               >
                 👎 {dislikeCount}
               </button>
+
+              {isAdmin && (
+                <button
+                  onClick={() => onDeleteCounter?.(counter.id, counter.defense_id)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    background: 'transparent',
+                    border: '1px solid #ef444444',
+                    color: '#ef4444',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = '#7f1d1d'
+                    e.currentTarget.style.borderColor = '#ef4444'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.borderColor = '#ef444444'
+                  }}
+                >
+                  🗑️ ลบ Counter
+                </button>
+              )}
             </div>
           </div>
 
@@ -537,9 +571,12 @@ interface DefenseGroupProps {
   onContribute: (defenseId: string) => void
   newestCounterId: string | null
   onOpenLogin: () => void
+  isAdmin: boolean
+  onDeleteDefense: (id: string) => void
+  onDeleteCounter: (id: string, defenseId: string) => void
 }
 
-function DefenseGroup({ result, onContribute, newestCounterId, onOpenLogin }: DefenseGroupProps) {
+function DefenseGroup({ result, onContribute, newestCounterId, onOpenLogin, isAdmin, onDeleteDefense, onDeleteCounter }: DefenseGroupProps) {
   const { defense, counters } = result
 
   return (
@@ -566,13 +603,42 @@ function DefenseGroup({ result, onContribute, newestCounterId, onOpenLogin }: De
             {defense.knight3 && <KnightAvatar knight={defense.knight3} size={48} showName />}
           </div>
 
-          {/* Defense metadata */}
+          {/* Defense metadata + admin delete */}
           <div className="flex flex-col gap-1 text-sm min-w-0">
             {defense.leader_skill && (
               <div>
                 <span className="font-bold" style={{ color: '#f59e0b' }}>Leader Skill: </span>
                 <span className="italic" style={{ color: '#9ca3af' }}>{defense.leader_skill}</span>
               </div>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => onDeleteDefense(defense.id)}
+                style={{
+                  marginTop: '4px',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  background: 'transparent',
+                  border: '1px solid #ef444444',
+                  color: '#ef4444',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#7f1d1d'
+                  e.currentTarget.style.borderColor = '#ef4444'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.borderColor = '#ef444444'
+                }}
+              >
+                🗑️ ลบทีม Defense
+              </button>
             )}
           </div>
         </div>
@@ -604,7 +670,14 @@ function DefenseGroup({ result, onContribute, newestCounterId, onOpenLogin }: De
         </div>
       ) : (
         counters.map(counter => (
-          <CounterCard key={counter.id} counter={counter} isNewest={counter.id === newestCounterId} onOpenLogin={onOpenLogin} />
+          <CounterCard
+            key={counter.id}
+            counter={counter}
+            isNewest={counter.id === newestCounterId}
+            onOpenLogin={onOpenLogin}
+            isAdmin={isAdmin}
+            onDeleteCounter={onDeleteCounter}
+          />
         ))
       )}
     </div>
@@ -619,6 +692,7 @@ interface GVGPageProps {
 
 export default function GVGPage({ onOpenLogin }: GVGPageProps) {
   const { user } = useAuth()
+  const { isAdmin } = useAdmin()
   const [searchParams] = useSearchParams()
 
   const [selectedLeader,  setSelectedLeader]  = useState<Knight | null>(null)
@@ -632,6 +706,11 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
   const [showContributeModal, setShowContributeModal] = useState(false)
   const [contributeDefenseId, setContributeDefenseId] = useState<string | null>(null)
   const [newestCounterId,    setNewestCounterId]    = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'defense' | 'counter'
+    id: string
+    defenseId?: string
+  } | null>(null)
 
   // ── Auto-load from URL ?defense_id= ────────────────────────────────────────
   useEffect(() => {
@@ -874,6 +953,42 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
     setIsSearching(false)
   }
 
+  // ── Delete handler ─────────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+
+    if (deleteTarget.type === 'defense') {
+      const { error } = await supabase
+        .from('gvg_defenses')
+        .delete()
+        .eq('id', deleteTarget.id)
+
+      if (!error) {
+        setSearchResults(prev =>
+          prev.filter(g => g.defense.id !== deleteTarget.id)
+        )
+      }
+    }
+
+    if (deleteTarget.type === 'counter') {
+      const { error } = await supabase
+        .from('gvg_counters')
+        .delete()
+        .eq('id', deleteTarget.id)
+
+      if (!error) {
+        setSearchResults(prev =>
+          prev.map(g => ({
+            ...g,
+            counters: g.counters.filter(c => c.id !== deleteTarget.id),
+          }))
+        )
+      }
+    }
+
+    setDeleteTarget(null)
+  }
+
   // ── Modal title ─────────────────────────────────────────────────────────────
   const modalTitle =
     openModalSlot === 'leader'  ? 'Select Knight #1' :
@@ -1091,6 +1206,9 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
                     onContribute={handleContributeClick}
                     newestCounterId={newestCounterId}
                     onOpenLogin={onOpenLogin}
+                    isAdmin={isAdmin}
+                    onDeleteDefense={id => setDeleteTarget({ type: 'defense', id })}
+                    onDeleteCounter={(id, defenseId) => setDeleteTarget({ type: 'counter', id, defenseId })}
                   />
                 ))
               )}
@@ -1168,6 +1286,23 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
         onSelect={handleKnightSelect}
         title={modalTitle}
         allowAny={openModalSlot === 'knight3'}
+      />
+
+      {/* ── Confirm Delete Modal ──────────────────────────────────────────── */}
+      <ConfirmDeleteModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title={
+          deleteTarget?.type === 'defense'
+            ? 'ลบทีม Defense นี้?'
+            : 'ลบ Counter นี้?'
+        }
+        description={
+          deleteTarget?.type === 'defense'
+            ? 'การลบทีม Defense จะลบ Counter ทั้งหมดที่เกี่ยวข้องด้วย และไม่สามารถกู้คืนได้'
+            : 'Counter นี้จะถูกลบถาวร ไม่สามารถกู้คืนได้'
+        }
       />
     </div>
   )
