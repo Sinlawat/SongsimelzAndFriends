@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import type { Knight, KnightElement } from '../../types/index'
-import { ELEMENT_COLORS, ELEMENT_EMOJI } from '../../types/index'
+import { ELEMENT_COLORS, ELEMENT_ICONS } from '../../types/index'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -381,7 +381,7 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
                   boxShadow: active ? `0 0 8px ${color}50` : 'none',
                 }}
               >
-                <span>{ELEMENT_EMOJI[el]}</span>
+                <img src={ELEMENT_ICONS[el]} alt={el} style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
                 <span>{el.charAt(0).toUpperCase() + el.slice(1)}</span>
               </button>
             )

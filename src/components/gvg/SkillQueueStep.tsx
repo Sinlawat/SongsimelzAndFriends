@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { SlotAssignment, SkillReservationData } from '../../types/index'
-import { ELEMENT_COLORS, ELEMENT_EMOJI } from '../../types/index'
+import { ELEMENT_COLORS, ELEMENT_ICONS } from '../../types/index'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -300,8 +300,12 @@ export default function SkillQueueStep({ slots, onChange }: Props) {
                   <p style={{ fontSize: '11px', color: '#fff', margin: 0, fontWeight: 600, maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {knight.name}
                   </p>
-                  <p style={{ fontSize: '10px', margin: 0, marginTop: '1px' }}>
-                    {ELEMENT_EMOJI[knight.element]}
+                  <p style={{ fontSize: '10px', margin: 0, marginTop: '1px', lineHeight: 1 }}>
+                    <img
+                      src={ELEMENT_ICONS[knight.element]}
+                      alt={knight.element}
+                      style={{ width: '16px', height: '16px', objectFit: 'contain', verticalAlign: 'middle' }}
+                    />
                   </p>
                 </div>
 

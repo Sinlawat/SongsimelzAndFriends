@@ -39,6 +39,41 @@ export interface EquippedItems {
   gem: Item|null
 }
 
+// ─── Equipment (GVG) Types ────────────────────────────────────────────────────
+
+export type EquipmentSlotType = 'weapon1' | 'weapon2' | 'armor1' | 'armor2' | 'ring'
+
+export interface Equipment {
+  id: string
+  name: string
+  slot_type: 'weapon' | 'armor' | 'ring'
+  set_name?: string
+  image_url?: string
+  description?: string
+}
+
+export interface CounterKnightItem {
+  id?: string
+  counter_id?: string
+  knight_id: string
+  slot_type: EquipmentSlotType
+  equipment_id: string | null
+  equipment?: Equipment | null
+}
+
+export const EQUIPMENT_SLOTS: {
+  type: EquipmentSlotType
+  label: string
+  equipType: 'weapon' | 'armor' | 'ring'
+  position: 'top-left' | 'bottom-left' | 'top-right' | 'bottom-right' | 'center-right'
+}[] = [
+  { type: 'weapon1', label: 'อาวุธ 1', equipType: 'weapon', position: 'top-left'     },
+  { type: 'weapon2', label: 'อาวุธ 2', equipType: 'weapon', position: 'bottom-left'  },
+  { type: 'armor1',  label: 'เกราะ 1', equipType: 'armor',  position: 'top-right'    },
+  { type: 'armor2',  label: 'เกราะ 2', equipType: 'armor',  position: 'bottom-right' },
+  { type: 'ring',    label: 'แหวน',    equipType: 'ring',   position: 'center-right' },
+]
+
 // ─── GVG Types ────────────────────────────────────────────────────────────────
 
 export type KnightElement = 'magic' | 'physical' | 'tank' | 'support' | 'balance'
@@ -191,6 +226,14 @@ export const ELEMENT_EMOJI: Record<string, string> = {
   tank:     '🛡️',
   support:  '💚',
   balance:  '⚖️',
+}
+
+export const ELEMENT_ICONS: Record<string, string> = {
+  magic:    'https://qaqmzgrggdmxqcqudiko.supabase.co/storage/v1/object/public/element-icons/magic_icon.webp',
+  physical: 'https://qaqmzgrggdmxqcqudiko.supabase.co/storage/v1/object/public/element-icons/physical_icon.webp',
+  tank:     'https://qaqmzgrggdmxqcqudiko.supabase.co/storage/v1/object/public/element-icons/tank_icon2.webp',
+  support:  'https://qaqmzgrggdmxqcqudiko.supabase.co/storage/v1/object/public/element-icons/support_icon.webp',
+  balance:  'https://qaqmzgrggdmxqcqudiko.supabase.co/storage/v1/object/public/element-icons/balance_icon2.webp',
 }
 
 // ─── Stat Calculator Types ────────────────────────────────────────────────────

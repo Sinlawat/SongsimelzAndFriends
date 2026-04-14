@@ -1,5 +1,5 @@
 import type { Knight } from '../../types/index'
-import { ELEMENT_COLORS, ELEMENT_EMOJI } from '../../types/index'
+import { ELEMENT_COLORS, ELEMENT_ICONS } from '../../types/index'
 
 interface Props {
   knight: Knight
@@ -82,11 +82,14 @@ export default function KnightAvatar({ knight, size = 48, showName = false }: Pr
             borderRadius: '50%',
             backgroundColor: '#0d1117',
             border: `1px solid ${color}50`,
-            fontSize: emoji,
             lineHeight: 1,
           }}
         >
-          {ELEMENT_EMOJI[knight.element]}
+          <img
+            src={ELEMENT_ICONS[knight.element]}
+            alt={knight.element}
+            style={{ width: emoji, height: emoji, objectFit: 'contain' }}
+          />
         </div>
       </div>
 

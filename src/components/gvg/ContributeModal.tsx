@@ -1,13 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabaseClient'
-import type { Formation, SlotAssignment, Knight, GVGCounter } from '../../types/index'
-import { FORMATIONS } from '../../types/index'
+import type { Formation, SlotAssignment, Knight, GVGCounter, Equipment, EquipmentSlotType } from '../../types/index'
+import { FORMATIONS, EQUIPMENT_SLOTS } from '../../types/index'
 import { useAuth } from '../../contexts/AuthContext'
 import KnightAvatar from './KnightAvatar'
 import FormationCard from './FormationCard'
 import FormationBoard from './FormationBoard'
 import KnightSelectModal from './KnightSelectModal'
 import SkillQueueStep from './SkillQueueStep'
+import KnightEquipmentSlots from './KnightEquipmentSlots'
+import EquipmentPickerModal from './EquipmentPickerModal'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -210,6 +212,27 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
   const [isSubmitting,       setIsSubmitting]       = useState(false)
   const [error,              setError]              = useState<string | null>(null)
 
+  const [knightEquipment, setKnightEquipment] = useState<
+    Record<number, Record<EquipmentSlotType, Equipment | null>>
+  >({})
+  const [openEquipSlot, setOpenEquipSlot] = useState<{
+    slotNumber: number
+    slotType: EquipmentSlotType
+  } | null>(null)
+
+  // Initialise equipment map when a knight is placed into a slot
+  useEffect(() => {
+    slots.filter(s => s.knight).forEach(s => {
+      setKnightEquipment(prev => {
+        if (prev[s.slotNumber]) return prev
+        return {
+          ...prev,
+          [s.slotNumber]: { weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null },
+        }
+      })
+    })
+  }, [slots])
+
   if (!isOpen) return null
 
   // ── Computed ──────────────────────────────────────────────────────────────
@@ -223,6 +246,8 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
     setOpenSlotNumber(null)
     setStrategy('')
     setError(null)
+    setKnightEquipment({})
+    setOpenEquipSlot(null)
     onClose()
   }
 
@@ -300,6 +325,26 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
         // ✅ เพิ่มตรงนี้
         console.log('=== SUPABASE ERROR ===', JSON.stringify(insertError, null, 2))
         throw insertError
+      }
+
+      // Save equipment items for each knight
+      const equipmentInserts: Record<string, unknown>[] = []
+      slots.filter(s => s.knight).forEach(slot => {
+        const eq = knightEquipment[slot.slotNumber]
+        if (!eq) return
+        EQUIPMENT_SLOTS.forEach(({ type }) => {
+          if (eq[type]) {
+            equipmentInserts.push({
+              counter_id:   data.id,
+              knight_id:    slot.knight!.id,
+              slot_type:    type,
+              equipment_id: eq[type]!.id,
+            })
+          }
+        })
+      })
+      if (equipmentInserts.length > 0) {
+        await supabase.from('counter_knight_items').insert(equipmentInserts)
       }
 
       const newCounter: GVGCounter = {
@@ -476,6 +521,43 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
             {/* ════════════════ STEP 3: Skills ════════════════ */}
             {step === 3 && (
               <div style={{ padding: '1rem 1.5rem' }}>
+
+                {/* ── Equipment section ──────────────────────────────────────── */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 'bold', color: '#f59e0b', margin: '0 0 12px' }}>
+                    🗡️ ใส่อุปกรณ์ (optional)
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {slots.filter(s => s.knight !== null).map(slot => (
+                      <div key={slot.slotNumber} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {/* Knight name */}
+                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#9ca3af' }}>
+                          {slot.knight!.name}
+                        </span>
+
+                        {/* Equipment slots */}
+                        <KnightEquipmentSlots
+                          knight={slot.knight!}
+                          items={knightEquipment[slot.slotNumber] ?? { weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null }}
+                          onSlotClick={(slotType: EquipmentSlotType) => {
+                            const current = knightEquipment[slot.slotNumber]?.[slotType]
+                            if (current) {
+                              setKnightEquipment(prev => ({
+                                ...prev,
+                                [slot.slotNumber]: { ...prev[slot.slotNumber], [slotType]: null },
+                              }))
+                            } else {
+                              setOpenEquipSlot({ slotNumber: slot.slotNumber, slotType })
+                            }
+                          }}
+                          readonly={false}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <SkillQueueStep
                   slots={slots.filter(s => s.knight !== null)}
                   onChange={(slotNumber, skillQueue) => {
@@ -619,6 +701,29 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
         onSelect={handleKnightSelect}
         title={`Select knight for Slot ${openSlotNumber}`}
         allowAny={false}
+      />
+
+      {/* ── Equipment picker (inner modal) ───────────────────────────────────── */}
+      <EquipmentPickerModal
+        isOpen={openEquipSlot !== null}
+        onClose={() => setOpenEquipSlot(null)}
+        slotType={openEquipSlot?.slotType ?? 'weapon1'}
+        currentEquipmentId={
+          openEquipSlot
+            ? knightEquipment[openEquipSlot.slotNumber]?.[openEquipSlot.slotType]?.id ?? null
+            : null
+        }
+        onSelect={(equipment) => {
+          if (!openEquipSlot) return
+          setKnightEquipment(prev => ({
+            ...prev,
+            [openEquipSlot.slotNumber]: {
+              ...prev[openEquipSlot.slotNumber],
+              [openEquipSlot.slotType]: equipment,
+            },
+          }))
+          setOpenEquipSlot(null)
+        }}
       />
     </>
   )

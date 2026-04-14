@@ -1,0 +1,295 @@
+import { useState } from 'react'
+import type { Knight, EquipmentSlotType, Equipment } from '../../types/index'
+import { ELEMENT_COLORS, EQUIPMENT_SLOTS } from '../../types/index'
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface Props {
+  knight: Knight
+  items: Record<EquipmentSlotType, Equipment | null>
+  onSlotClick: (slotType: EquipmentSlotType) => void
+  readonly?: boolean
+}
+
+// ─── Slot icons ───────────────────────────────────────────────────────────────
+
+const SLOT_ICON: Record<string, string> = {
+  weapon: '⚔️',
+  armor:  '🛡️',
+  ring:   '💍',
+}
+
+// ─── Single slot button ───────────────────────────────────────────────────────
+
+function SlotButton({
+  slotType,
+  equipment,
+  onClick,
+  readonly,
+}: {
+  slotType: EquipmentSlotType
+  equipment: Equipment | null
+  onClick: () => void
+  readonly: boolean
+}) {
+  const [hovered, setHovered] = useState(false)
+  const slotMeta  = EQUIPMENT_SLOTS.find(s => s.type === slotType)!
+  const equipType = slotMeta.equipType
+  const icon      = SLOT_ICON[equipType]
+  const hasEquip  = equipment !== null
+
+  const title = hasEquip
+    ? `${slotMeta.label}: ${equipment!.name}`
+    : slotMeta.label
+
+  return (
+    <div
+      onClick={() => !readonly && onClick()}
+      onMouseEnter={() => !readonly && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={title}
+      style={{
+        width: '56px',
+        height: '56px',
+        borderRadius: '10px',
+        position: 'relative',
+        cursor: readonly ? 'default' : 'pointer',
+        overflow: 'hidden',
+        transition: 'border-color 0.15s, background 0.15s',
+        flexShrink: 0,
+        ...(hasEquip ? {
+          border: '2px solid #f59e0b44',
+          background: '#1e3a5f',
+        } : {
+          border: `2px dashed ${hovered ? '#f59e0b' : '#2d4a7a'}`,
+          background: hovered ? '#1e2d4a' : '#1a2744',
+        }),
+      }}
+    >
+      {hasEquip ? (
+        <>
+          {/* Equipment image or fallback */}
+          {equipment!.image_url ? (
+            <img
+              src={equipment!.image_url}
+              alt={equipment!.name}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+              onError={e => { e.currentTarget.style.display = 'none' }}
+            />
+          ) : (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '2px',
+              padding: '2px',
+            }}>
+              <span style={{ fontSize: '20px', lineHeight: 1 }}>{icon}</span>
+              {equipment!.set_name && (
+                <span style={{
+                  fontSize: '7px',
+                  color: '#f59e0b',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  width: '100%',
+                  padding: '0 2px',
+                }}>
+                  {equipment!.set_name}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Remove X — edit mode only */}
+          {!readonly && (
+            <button
+              onClick={e => { e.stopPropagation(); onClick() }}
+              style={{
+                position: 'absolute',
+                top: '2px',
+                right: '2px',
+                width: '14px',
+                height: '14px',
+                borderRadius: '50%',
+                background: '#ef4444',
+                border: '1.5px solid #0f172a',
+                color: '#fff',
+                fontSize: '8px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+                padding: 0,
+                zIndex: 2,
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </>
+      ) : (
+        /* Empty slot */
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '3px',
+        }}>
+          <span style={{ fontSize: '20px', lineHeight: 1, opacity: 0.5 }}>{icon}</span>
+          <span style={{ fontSize: '7px', color: '#374151', textAlign: 'center' }}>
+            {slotMeta.label}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function KnightEquipmentSlots({
+  knight,
+  items,
+  onSlotClick,
+  readonly = false,
+}: Props) {
+  const elementColor = ELEMENT_COLORS[knight.element] ?? '#6b7280'
+
+  // Collect unique set names and their counts
+  const setCounts: Record<string, number> = {}
+  Object.values(items).forEach(eq => {
+    if (eq?.set_name) {
+      setCounts[eq.set_name] = (setCounts[eq.set_name] ?? 0) + 1
+    }
+  })
+  const setSummary = Object.entries(setCounts)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+      {/*
+        Grid layout:
+          col 1 (68px) — portrait (spans 2 rows)
+          col 2 (56px) — weapon1 / weapon2
+          col 3 (56px) — armor1 / armor2
+          col 4 (56px) — ring (spans 2 rows, centered)
+      */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '68px 56px 56px 56px',
+        gridTemplateRows: '56px 56px',
+        gap: '6px',
+        alignItems: 'center',
+      }}>
+        {/* Knight portrait — col 1, rows 1-2 */}
+        <div style={{
+          gridColumn: 1,
+          gridRow: '1 / 3',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            overflow: 'hidden',
+            border: `2px solid ${elementColor}`,
+            flexShrink: 0,
+          }}>
+            {knight.image_url ? (
+              <img
+                src={knight.image_url}
+                alt={knight.name}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}
+                onError={e => { e.currentTarget.style.display = 'none' }}
+              />
+            ) : (
+              <div style={{
+                width: '100%',
+                height: '100%',
+                background: elementColor + '33',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '22px',
+                fontWeight: 'bold',
+                color: elementColor,
+              }}>
+                {knight.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* weapon1 — col 2, row 1 */}
+        <div style={{ gridColumn: 2, gridRow: 1 }}>
+          <SlotButton slotType="weapon1" equipment={items.weapon1} onClick={() => onSlotClick('weapon1')} readonly={readonly} />
+        </div>
+
+        {/* weapon2 — col 2, row 2 */}
+        <div style={{ gridColumn: 2, gridRow: 2 }}>
+          <SlotButton slotType="weapon2" equipment={items.weapon2} onClick={() => onSlotClick('weapon2')} readonly={readonly} />
+        </div>
+
+        {/* armor1 — col 3, row 1 */}
+        <div style={{ gridColumn: 3, gridRow: 1 }}>
+          <SlotButton slotType="armor1" equipment={items.armor1} onClick={() => onSlotClick('armor1')} readonly={readonly} />
+        </div>
+
+        {/* armor2 — col 3, row 2 */}
+        <div style={{ gridColumn: 3, gridRow: 2 }}>
+          <SlotButton slotType="armor2" equipment={items.armor2} onClick={() => onSlotClick('armor2')} readonly={readonly} />
+        </div>
+
+        {/* ring — col 4, rows 1-2, vertically centered */}
+        <div style={{
+          gridColumn: 4,
+          gridRow: '1 / 3',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <SlotButton slotType="ring" equipment={items.ring} onClick={() => onSlotClick('ring')} readonly={readonly} />
+        </div>
+      </div>
+
+      {/* Set name pills */}
+      {setSummary.length > 0 && (
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {setSummary.map(([setName, count]) => (
+            <span
+              key={setName}
+              style={{
+                fontSize: '9px',
+                color: '#f59e0b',
+                background: '#f59e0b18',
+                border: '1px solid #f59e0b33',
+                borderRadius: '99px',
+                padding: '1px 6px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {setName} ×{count}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

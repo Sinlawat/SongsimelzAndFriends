@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
-import type { Knight, GVGDefense, GVGCounter, SlotAssignment } from '../types/index'
-import { ELEMENT_COLORS, ELEMENT_EMOJI, FORMATIONS } from '../types/index'
+import type { Knight, GVGDefense, GVGCounter, SlotAssignment, Equipment, EquipmentSlotType, CounterKnightItem } from '../types/index'
+import { ELEMENT_COLORS, ELEMENT_ICONS, FORMATIONS } from '../types/index'
 import KnightSelectModal from '../components/gvg/KnightSelectModal'
 import KnightAvatar from '../components/gvg/KnightAvatar'
 import FormationBoard from '../components/gvg/FormationBoard'
+import KnightEquipmentSlots from '../components/gvg/KnightEquipmentSlots'
 import ContributeModal from '../components/gvg/ContributeModal'
 import { useAuth } from '../contexts/AuthContext'
 import { useAdmin } from '../hooks/useAdmin'
@@ -80,7 +81,11 @@ function KnightSelectorButton({ label, knight, onClick, isAnyDefault }: Selector
               <span className="font-bold text-sm truncate" style={{ color: '#e2e8f0' }}>
                 {(knight as Knight).name}
               </span>
-              <span style={{ fontSize: '14px' }}>{ELEMENT_EMOJI[(knight as Knight).element]}</span>
+              <img
+                src={ELEMENT_ICONS[(knight as Knight).element]}
+                alt={(knight as Knight).element}
+                style={{ width: '16px', height: '16px', objectFit: 'contain', verticalAlign: 'middle', flexShrink: 0 }}
+              />
             </div>
           ) : isAny ? (
             <span className="italic text-sm" style={{ color: '#6b7280' }}>* ANY knight *</span>
@@ -116,6 +121,8 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
   const [commentText,     setCommentText]     = useState('')
   const [commentsLoaded,  setCommentsLoaded]  = useState(false)
   const [commentLoading,  setCommentLoading]  = useState(false)
+  const [knightItems,     setKnightItems]     = useState<CounterKnightItem[]>([])
+  const [itemsLoaded,     setItemsLoaded]     = useState(false)
 
   useEffect(() => {
     const fetchFreshData = async () => {
@@ -148,6 +155,18 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
 
     fetchFreshData()
   }, [counter.id, user])
+
+  useEffect(() => {
+    if (!isExpanded || itemsLoaded) return
+    supabase
+      .from('counter_knight_items')
+      .select('*, equipment:equipment_id(*)')
+      .eq('counter_id', counter.id)
+      .then(({ data }) => {
+        setKnightItems((data ?? []) as CounterKnightItem[])
+        setItemsLoaded(true)
+      })
+  }, [isExpanded, counter.id, itemsLoaded])
 
   async function loadComments() {
     if (commentsLoaded) return
@@ -372,6 +391,49 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
             readonly
             showSkills
           />
+
+          {/* Equipment section */}
+          {itemsLoaded && knightItems.length > 0 && (
+            <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #1e2d47' }}>
+              <p style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f59e0b', margin: '0 0 12px' }}>
+                🗡️ อุปกรณ์
+              </p>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+                {[counter.leader, counter.knight2, counter.knight3]
+                  .filter(Boolean)
+                  .map(knight => {
+                    const items: Record<EquipmentSlotType, Equipment | null> = {
+                      weapon1: null, weapon2: null,
+                      armor1:  null, armor2:  null, ring: null,
+                    }
+
+                    knightItems
+                      .filter(ki => ki.knight_id === knight!.id)
+                      .forEach(ki => {
+                        items[ki.slot_type as EquipmentSlotType] = (ki.equipment as Equipment) ?? null
+                      })
+
+                    const hasAnyItem = Object.values(items).some(v => v !== null)
+                    if (!hasAnyItem) return null
+
+                    return (
+                      <div key={knight!.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#9ca3af' }}>
+                          {knight!.name}
+                        </span>
+                        <KnightEquipmentSlots
+                          knight={knight!}
+                          items={items}
+                          onSlotClick={() => {}}
+                          readonly={true}
+                        />
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
 
           {/* Strategy section */}
           {counter.strategy && (
