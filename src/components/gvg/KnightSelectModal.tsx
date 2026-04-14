@@ -237,7 +237,14 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
       .order('name', { ascending: true })
       .then(({ data, error }) => {
         if (!error && data) {
-          setKnights(data as Knight[])
+          setKnights(
+            (data ?? []).map(k => ({
+              ...k,
+              knight_stats: Array.isArray(k.knight_stats)
+                ? (k.knight_stats[0] ?? null)
+                : (k.knight_stats ?? null)
+            })) as unknown as Knight[]
+          )
           fetched.current = true
         }
         setLoading(false)

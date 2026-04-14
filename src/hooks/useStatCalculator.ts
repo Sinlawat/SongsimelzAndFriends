@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { Knight, FinalStats, ItemStatBonus } from '../types/index'
+import { getKnightStats } from '../types/index'
 
 type StatKey = keyof Omit<FinalStats, 'bonuses'>
 
@@ -24,7 +25,7 @@ export function useStatCalculator(
   const finalStats = useMemo(() => {
     if (!knight) return null
 
-    const s = knight.knight_stats ?? {
+    const s = getKnightStats(knight) ?? {
       base_hp: 0, base_attack_physical: 0, base_attack_magic: 0,
       base_defense: 0, base_speed: 0, base_crit_rate: 0, base_crit_damage: 150,
       base_resistance: 0, base_effective_hit_rate: 0,

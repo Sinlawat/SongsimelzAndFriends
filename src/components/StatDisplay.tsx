@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, Fragment } from 'react'
 import type { Knight, FinalStats, ItemStatBonus } from '../types/index'
+import { getKnightStats } from '../types/index'
 import { useStatCalculator, getStatLabel } from '../hooks/useStatCalculator'
 
 interface Props {
@@ -134,7 +135,7 @@ export default function StatDisplay({ character, itemBonuses }: Props) {
   const { finalStats } = useStatCalculator(character, itemBonuses)
   if (!finalStats) return null
 
-  const s = character.knight_stats
+  const s = getKnightStats(character)
   const baseStats: Record<StatKey, number> = {
     hp:              s?.base_hp              ?? 0,
     attack_physical: s?.base_attack_physical ?? 0,

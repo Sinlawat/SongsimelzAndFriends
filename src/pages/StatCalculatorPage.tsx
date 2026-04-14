@@ -4,7 +4,7 @@ import type {
   Knight, KnightStats, ItemStatBonus, Equipment, EquipmentSlotType,
   TranscendBonus,
 } from '../types/index'
-import { ELEMENT_ICONS, TRANSCEND_STAT_MAP } from '../types/index'
+import { ELEMENT_ICONS, TRANSCEND_STAT_MAP, getKnightStats } from '../types/index'
 import StatDisplay from '../components/StatDisplay'
 import KnightEquipmentSlots from '../components/gvg/KnightEquipmentSlots'
 import EquipmentPickerModal from '../components/gvg/EquipmentPickerModal'
@@ -112,7 +112,7 @@ export default function StatCalculatorPage() {
   }
 
   // Build transcended stats for display and passing to StatDisplay
-  const baseKnightStats  = selectedKnight?.knight_stats ?? null
+  const baseKnightStats  = selectedKnight ? getKnightStats(selectedKnight) : null
   const transcendedStats = baseKnightStats
     ? calculateTranscendStats(baseKnightStats, transcendLevel, knightTranscends, globalTranscends)
     : null

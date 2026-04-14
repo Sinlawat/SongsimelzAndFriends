@@ -104,7 +104,15 @@ export interface Knight {
   image_url?: string
   img_skill_1?: string
   img_skill_2?: string
-  knight_stats?: KnightStats | null
+  knight_stats?: KnightStats | KnightStats[] | null
+}
+
+export function getKnightStats(knight: Knight): KnightStats | null {
+  if (!knight.knight_stats) return null
+  if (Array.isArray(knight.knight_stats)) {
+    return knight.knight_stats[0] ?? null
+  }
+  return knight.knight_stats
 }
 
 export interface GVGDefense {
