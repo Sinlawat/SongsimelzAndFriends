@@ -78,16 +78,33 @@ export const EQUIPMENT_SLOTS: {
 
 export type KnightElement = 'magic' | 'physical' | 'tank' | 'support' | 'balance'
 
+export interface KnightStats {
+  id: string
+  knight_id: string
+  base_hp: number
+  base_attack_physical: number
+  base_attack_magic: number
+  base_defense: number
+  base_speed: number
+  base_crit_rate: number
+  base_crit_damage: number
+  base_resistance: number
+  base_effective_hit_rate: number
+  base_block_rate: number
+  base_weakness: number
+  base_damage_taken_reduction: number
+}
+
 export interface Knight {
   id: string
   name: string
-  element: KnightElement
+  element: string
   class: string
-  stars: number
+  grade?: string
   image_url?: string
   img_skill_1?: string
   img_skill_2?: string
-  grade?: 'gold++' | 'gold+' | 'gold' | 'blue' | 'green' | 'white'
+  knight_stats?: KnightStats | null
 }
 
 export interface GVGDefense {
@@ -99,6 +116,13 @@ export interface GVGDefense {
   leader: Knight
   knight2: Knight
   knight3?: Knight
+}
+
+export interface Pet {
+  id: string
+  name: string
+  image_url?: string
+  description?: string
 }
 
 export interface GVGCounter {
@@ -122,6 +146,9 @@ export interface GVGCounter {
   leader: Knight
   knight2: Knight
   knight3?: Knight
+  recommended_stats?: Record<string, Record<string, number>> | null
+  pet_ids?: (string | null)[]
+  pets?: (Pet | null)[]
 }
 
 export interface CounterVote {
@@ -236,18 +263,47 @@ export const ELEMENT_ICONS: Record<string, string> = {
   balance:  'https://qaqmzgrggdmxqcqudiko.supabase.co/storage/v1/object/public/element-icons/balance_icon2.webp',
 }
 
+// ─── Transcend Types ─────────────────────────────────────────────────────────
+
+export interface TranscendBonus {
+  id: string
+  knight_id?: string
+  transcend_level: number
+  stat_name: string
+  value: number
+  is_percent: boolean
+}
+
+export const TRANSCEND_STAT_MAP: Record<string, string[]> = {
+  all_attack:             ['base_attack_physical', 'base_attack_magic'],
+  physical_attack:        ['base_attack_physical'],
+  magic_attack:           ['base_attack_magic'],
+  defense:                ['base_defense'],
+  hp:                     ['base_hp'],
+  crit_rate:              ['base_crit_rate'],
+  crit_damage:            ['base_crit_damage'],
+  resistance:             ['base_resistance'],
+  effective_hit_rate:     ['base_effective_hit_rate'],
+  block_rate:             ['base_block_rate'],
+  weakness:               ['base_weakness'],
+  damage_taken_reduction: ['base_damage_taken_reduction'],
+  speed:                  ['base_speed'],
+}
+
 // ─── Stat Calculator Types ────────────────────────────────────────────────────
 
 export interface FinalStats {
   hp: number
-  attack: number
+  attack_physical: number
+  attack_magic: number
   defense: number
   speed: number
   crit_rate: number
   crit_damage: number
   bonuses: {
     hp: number
-    attack: number
+    attack_physical: number
+    attack_magic: number
     defense: number
     speed: number
     crit_rate: number

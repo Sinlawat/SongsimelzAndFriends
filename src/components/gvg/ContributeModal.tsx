@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabaseClient'
-import type { Formation, SlotAssignment, Knight, GVGCounter, Equipment, EquipmentSlotType } from '../../types/index'
+import type { Formation, SlotAssignment, Knight, GVGCounter, Equipment, EquipmentSlotType, KnightStats, Pet } from '../../types/index'
 import { FORMATIONS, EQUIPMENT_SLOTS } from '../../types/index'
 import { useAuth } from '../../contexts/AuthContext'
 import KnightAvatar from './KnightAvatar'
@@ -10,6 +10,7 @@ import KnightSelectModal from './KnightSelectModal'
 import SkillQueueStep from './SkillQueueStep'
 import KnightEquipmentSlots from './KnightEquipmentSlots'
 import EquipmentPickerModal from './EquipmentPickerModal'
+import PetSelectModal from './PetSelectModal'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -220,7 +221,14 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
     slotType: EquipmentSlotType
   } | null>(null)
 
-  // Initialise equipment map when a knight is placed into a slot
+  const [recommendedStats, setRecommendedStats] = useState<
+    Record<string, Partial<KnightStats>>
+  >({})
+
+  const [selectedPet,  setSelectedPet]  = useState<Pet | null>(null)
+  const [openPetModal, setOpenPetModal] = useState(false)
+
+  // Initialise equipment + recommendedStats map when a knight is placed into a slot
   useEffect(() => {
     slots.filter(s => s.knight).forEach(s => {
       setKnightEquipment(prev => {
@@ -229,6 +237,11 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
           ...prev,
           [s.slotNumber]: { weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null },
         }
+      })
+      const knightId = s.knight!.id
+      setRecommendedStats(prev => {
+        if (prev[knightId]) return prev
+        return { ...prev, [knightId]: {} }
       })
     })
   }, [slots])
@@ -248,6 +261,9 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
     setError(null)
     setKnightEquipment({})
     setOpenEquipSlot(null)
+    setRecommendedStats({})
+    setSelectedPet(null)
+    setOpenPetModal(false)
     onClose()
   }
 
@@ -301,16 +317,29 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
         skillQueues[s.knight!.id] = s.skillQueue
       })
 
+      const recStats: Record<string, Partial<KnightStats>> = {}
+      slots.filter(s => s.knight).forEach(s => {
+        const filtered = Object.fromEntries(
+          Object.entries(recommendedStats[s.knight!.id] ?? {})
+            .filter(([, v]) => v !== undefined && v !== null)
+        )
+        if (Object.keys(filtered).length > 0) {
+          recStats[s.knight!.id] = filtered as Partial<KnightStats>
+        }
+      })
+
       const insertData = {
-        defense_id:     defenseId,
-        leader_id:      assignedSlots[0]?.knight?.id,
-        knight2_id:     assignedSlots[1]?.knight?.id,
-        knight3_id:     assignedSlots[2]?.knight?.id ?? null,
-        strategy:       strategy.trim() || null,
-        formation_id:   selectedFormation.id,
-        slot_positions: slotPositions,
-        skill_queues:   skillQueues,
-        submitted_by:   user?.email ?? 'Anonymous',
+        defense_id:        defenseId,
+        leader_id:         assignedSlots[0]?.knight?.id,
+        knight2_id:        assignedSlots[1]?.knight?.id,
+        knight3_id:        assignedSlots[2]?.knight?.id ?? null,
+        strategy:          strategy.trim() || null,
+        formation_id:      selectedFormation.id,
+        slot_positions:    slotPositions,
+        skill_queues:      skillQueues,
+        submitted_by:      user?.email ?? 'Anonymous',
+        recommended_stats: Object.keys(recStats).length > 0 ? recStats : null,
+        pet_ids: selectedPet ? [selectedPet.id] : null,
       }
       // ลองเพิ่มตรงนี้เช็ค error
       console.log('=== DEBUG insertData ===', JSON.stringify(insertData, null, 2))
@@ -473,7 +502,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
               </div>
             )}
 
-            {/* ════════════════ STEP 2: Knights only ════════════════ */}
+            {/* ════════════════ STEP 2: Knights + Pets ════════════════ */}
             {step === 2 && (
               <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -481,8 +510,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                     วางฮีโร่ใน Formation
                   </p>
                   <span style={{
-                    fontSize: '12px',
-                    fontWeight: 'bold',
+                    fontSize: '12px', fontWeight: 'bold',
                     color: selectedKnightCount >= 3 ? '#22c55e' : '#f59e0b',
                   }}>
                     {selectedKnightCount}/3 knights selected
@@ -491,30 +519,95 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
 
                 {selectedKnightCount >= 3 && (
                   <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 12px',
-                    background: '#14532d30',
-                    border: '1px solid #22c55e40',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    color: '#86efac',
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 12px', background: '#14532d30',
+                    border: '1px solid #22c55e40', borderRadius: '8px',
+                    fontSize: '12px', color: '#86efac',
                   }}>
                     ✓ ครบ 3 ตัวแล้ว! กด Next เพื่อตั้ง Skill Queue
                   </div>
                 )}
 
-                {/* Formation board — NO skill pickers in this step */}
-                <FormationBoard
-                  formation={selectedFormation!}
-                  slots={slots}
-                  onSlotClick={handleSlotClick}
-                  onSlotRemove={handleSlotRemove}
-                  selectedKnightCount={selectedKnightCount}
-                  readonly={false}
-                  showSkills={false}
-                />
+                {/* Side-by-side: formation board + pet panel */}
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+
+                  {/* LEFT: Formation board */}
+                  <div style={{ flex: '1 1 0', minWidth: 0 }}>
+                    <FormationBoard
+                      formation={selectedFormation!}
+                      slots={slots}
+                      onSlotClick={handleSlotClick}
+                      onSlotRemove={handleSlotRemove}
+                      selectedKnightCount={selectedKnightCount}
+                      readonly={false}
+                      showSkills={false}
+                    />
+                  </div>
+
+                  {/* RIGHT: Single pet selection */}
+                  <div style={{ width: '140px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <p style={{ fontSize: '11px', fontWeight: 'bold', color: '#a855f7', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      🐾 สัตว์เลี้ยง
+                    </p>
+
+                    <button
+                      onClick={() => setOpenPetModal(true)}
+                      style={{
+                        width: '110px', height: '110px', borderRadius: '8px',
+                        border: selectedPet ? '2px solid #a855f7' : '1.5px dashed #374151',
+                        background: selectedPet ? '#2d1b69' : '#1f2937',
+                        cursor: 'pointer',
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center', gap: '4px',
+                        position: 'relative', overflow: 'hidden',
+                        transition: 'all 0.15s', padding: 0,
+                      }}
+                      onMouseEnter={e => { if (!selectedPet) e.currentTarget.style.borderColor = '#a855f7' }}
+                      onMouseLeave={e => { if (!selectedPet) e.currentTarget.style.borderColor = '#374151' }}
+                    >
+                      {selectedPet ? (
+                        <>
+                          {selectedPet.image_url ? (
+                            <img
+                              src={selectedPet.image_url}
+                              alt={selectedPet.name}
+                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={e => { e.currentTarget.style.display = 'none' }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: '32px', lineHeight: 1 }}>🐾</span>
+                          )}
+                          <div style={{
+                            position: 'absolute', bottom: 0, left: 0, right: 0,
+                            background: 'rgba(0,0,0,0.65)', padding: '3px 4px',
+                          }}>
+                            <span style={{ fontSize: '9px', color: 'white', display: 'block', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {selectedPet.name}
+                            </span>
+                          </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); setSelectedPet(null) }}
+                            style={{
+                              position: 'absolute', top: '4px', right: '4px',
+                              width: '16px', height: '16px', borderRadius: '50%',
+                              background: '#ef4444', border: 'none', color: 'white',
+                              fontSize: '10px', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              zIndex: 2, padding: 0,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: '26px', lineHeight: 1, opacity: 0.4 }}>🐾</span>
+                          <span style={{ fontSize: '9px', color: '#6b7280' }}>เลือกสัตว์เลี้ยง</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -555,6 +648,100 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                         />
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                {/* ── Recommended Stats section ──────────────────────────────── */}
+                <div style={{ marginBottom: '16px' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 'bold', color: '#f59e0b', marginBottom: '12px' }}>
+                    🎯 Recommended Stats (optional)
+                  </p>
+                  <p style={{ fontSize: '11px', color: '#6b7280', marginBottom: '12px', marginTop: '-8px' }}>
+                    กรอก stat ที่แนะนำให้มีสำหรับแต่ละตัวละคร เพื่อให้ผู้ใช้คนอื่นทราบ
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {slots.filter(s => s.knight !== null).map(slot => {
+                      const knight = slot.knight!
+                      const stats  = recommendedStats[knight.id] ?? {}
+
+                      const STAT_FIELDS: { key: keyof KnightStats; label: string; isPercent?: boolean }[] = [
+                        { key: 'base_hp',                    label: 'HP'             },
+                        { key: 'base_attack_physical',       label: 'ATK (Physical)' },
+                        { key: 'base_attack_magic',          label: 'ATK (Magic)'    },
+                        { key: 'base_defense',               label: 'DEF'            },
+                        { key: 'base_speed',                 label: 'SPD'            },
+                        { key: 'base_crit_rate',             label: 'CRIT Rate',      isPercent: true },
+                        { key: 'base_crit_damage',           label: 'CRIT DMG',       isPercent: true },
+                        { key: 'base_resistance',            label: 'Resistance',     isPercent: true },
+                        { key: 'base_effective_hit_rate',    label: 'Eff. Hit Rate',  isPercent: true },
+                        { key: 'base_block_rate',            label: 'Block Rate'     },
+                        { key: 'base_weakness',              label: 'Weakness'       },
+                        { key: 'base_damage_taken_reduction',label: 'DMG Reduction'  },
+                      ]
+
+                      return (
+                        <div key={knight.id} style={{
+                          background: '#0f172a', border: '1px solid #1e293b',
+                          borderRadius: '10px', padding: '12px 14px',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                            <KnightAvatar knight={knight} size={28} showName={false} />
+                            <span style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: 'bold' }}>
+                              {knight.name}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                            {STAT_FIELDS.map(field => (
+                              <div key={field.key} style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                background: '#111827', borderRadius: '6px', padding: '4px 8px',
+                              }}>
+                                <span style={{ fontSize: '10px', color: '#6b7280', whiteSpace: 'nowrap', minWidth: '70px' }}>
+                                  {field.label}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1 }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="-"
+                                    value={stats[field.key] ?? ''}
+                                    onChange={e => {
+                                      const val = e.target.value === '' ? undefined : Number(e.target.value)
+                                      setRecommendedStats(prev => ({
+                                        ...prev,
+                                        [knight.id]: { ...prev[knight.id], [field.key]: val },
+                                      }))
+                                    }}
+                                    style={{
+                                      width: '100%', background: 'transparent',
+                                      border: 'none', outline: 'none',
+                                      color: 'white', fontSize: '12px', fontWeight: 'bold',
+                                      textAlign: 'right',
+                                    }}
+                                  />
+                                  {field.isPercent && (
+                                    <span style={{ fontSize: '10px', color: '#6b7280' }}>%</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <button
+                            onClick={() => setRecommendedStats(prev => ({ ...prev, [knight.id]: {} }))}
+                            style={{
+                              marginTop: '8px', fontSize: '10px', color: '#4b5563',
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              padding: 0, textDecoration: 'underline',
+                            }}
+                          >
+                            ล้างค่าทั้งหมด
+                          </button>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
 
@@ -724,6 +911,15 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
           }))
           setOpenEquipSlot(null)
         }}
+      />
+
+      {/* ── Pet picker (inner modal) ─────────────────────────────────────────── */}
+      <PetSelectModal
+        isOpen={openPetModal}
+        onClose={() => setOpenPetModal(false)}
+        slotLabel="ทีม Counter"
+        currentPetId={selectedPet?.id ?? null}
+        onSelect={pet => { setSelectedPet(pet); setOpenPetModal(false) }}
       />
     </>
   )

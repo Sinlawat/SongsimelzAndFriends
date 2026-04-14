@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
-import type { Knight, GVGDefense, GVGCounter, SlotAssignment, Equipment, EquipmentSlotType, CounterKnightItem } from '../types/index'
+import type { Knight, GVGDefense, GVGCounter, SlotAssignment, Equipment, EquipmentSlotType, CounterKnightItem, Pet } from '../types/index'
 import { ELEMENT_COLORS, ELEMENT_ICONS, FORMATIONS } from '../types/index'
 import KnightSelectModal from '../components/gvg/KnightSelectModal'
 import KnightAvatar from '../components/gvg/KnightAvatar'
@@ -123,6 +123,7 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
   const [commentLoading,  setCommentLoading]  = useState(false)
   const [knightItems,     setKnightItems]     = useState<CounterKnightItem[]>([])
   const [itemsLoaded,     setItemsLoaded]     = useState(false)
+  const [counterPets,     setCounterPets]     = useState<(Pet | null)[]>([])
 
   useEffect(() => {
     const fetchFreshData = async () => {
@@ -167,6 +168,16 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
         setItemsLoaded(true)
       })
   }, [isExpanded, counter.id, itemsLoaded])
+
+  useEffect(() => {
+    if (!counter.pet_ids?.[0]) return
+    supabase
+      .from('pets')
+      .select('*')
+      .eq('id', counter.pet_ids[0])
+      .single()
+      .then(({ data }) => setCounterPets(data ? [data] : []))
+  }, [counter.id])
 
   async function loadComments() {
     if (commentsLoaded) return
@@ -342,6 +353,33 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
             {knightsInOrder.map((knight, i) => (
               <KnightAvatar key={i} knight={knight} size={40} showName={false} />
             ))}
+
+            {/* Pet image — show if counter has pet */}
+            {counterPets[0] && (
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                background: '#2d1b69',
+                border: '1.5px solid #a855f7',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginLeft: '4px',
+              }}>
+                {counterPets[0].image_url ? (
+                  <img
+                    src={counterPets[0].image_url}
+                    alt={counterPets[0].name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <span style={{ fontSize: '20px' }}>🐾</span>
+                )}
+              </div>
+            )}
           </div>
 
         </div>
@@ -392,6 +430,25 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
             showSkills
           />
 
+          {/* Pet row */}
+          {counterPets[0] && (
+            <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #1e2d47' }}>
+              <p style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#a855f7', margin: '0 0 10px' }}>
+                🐾 สัตว์เลี้ยง
+              </p>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#0f172a', border: '1px solid #2d1b69', borderRadius: '8px', padding: '6px 10px' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, background: '#2d1b69', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {counterPets[0].image_url ? (
+                    <img src={counterPets[0].image_url} alt={counterPets[0].name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none' }} />
+                  ) : (
+                    <span style={{ fontSize: '24px' }}>🐾</span>
+                  )}
+                </div>
+                <span style={{ fontSize: '13px', color: '#c084fc', fontWeight: 'bold' }}>{counterPets[0].name}</span>
+              </div>
+            </div>
+          )}
+
           {/* Equipment section */}
           {itemsLoaded && knightItems.length > 0 && (
             <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #1e2d47' }}>
@@ -432,6 +489,72 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
                     )
                   })}
               </div>
+            </div>
+          )}
+
+          {/* Recommended Stats section */}
+          {counter.recommended_stats && (
+            <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #1e2d47' }}>
+              <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#f59e0b', margin: '0 0 10px' }}>
+                🎯 Recommended Stats
+              </p>
+
+              {[counter.leader, counter.knight2, counter.knight3]
+                .filter(Boolean)
+                .map(knight => {
+                  const rec = counter.recommended_stats?.[knight!.id]
+                  if (!rec || Object.keys(rec).length === 0) return null
+
+                  const LABELS: Record<string, string> = {
+                    base_hp:                     'HP',
+                    base_attack_physical:        'ATK (Phy)',
+                    base_attack_magic:           'ATK (Mag)',
+                    base_defense:                'DEF',
+                    base_speed:                  'SPD',
+                    base_crit_rate:              'CRIT Rate',
+                    base_crit_damage:            'CRIT DMG',
+                    base_resistance:             'Resistance',
+                    base_effective_hit_rate:     'Eff. Hit Rate',
+                    base_block_rate:             'Block Rate',
+                    base_weakness:               'Weakness',
+                    base_damage_taken_reduction: 'DMG Reduction',
+                  }
+                  const PERCENT_FIELDS = [
+                    'base_crit_rate', 'base_crit_damage',
+                    'base_resistance', 'base_effective_hit_rate',
+                  ]
+
+                  return (
+                    <div key={knight!.id} style={{
+                      background: '#0f172a', border: '1px solid #1e293b',
+                      borderRadius: '8px', padding: '10px 12px', marginBottom: '8px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <KnightAvatar knight={knight!} size={24} showName={false} />
+                        <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'bold' }}>
+                          {knight!.name}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {Object.entries(rec).map(([key, val]) => (
+                          <div key={key} style={{
+                            background: '#111827', border: '1px solid #1e3a5f',
+                            borderRadius: '6px', padding: '4px 10px',
+                            display: 'flex', gap: '6px', alignItems: 'center',
+                          }}>
+                            <span style={{ fontSize: '10px', color: '#6b7280' }}>
+                              {LABELS[key] ?? key}
+                            </span>
+                            <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 'bold' }}>
+                              {val}{PERCENT_FIELDS.includes(key) ? '%' : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
             </div>
           )}
 

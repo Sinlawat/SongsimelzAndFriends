@@ -1,39 +1,42 @@
 import { useRef, useEffect, useState, Fragment } from 'react'
-import type { Character, EquippedItems, FinalStats } from '../types/index'
+import type { Knight, FinalStats, ItemStatBonus } from '../types/index'
 import { useStatCalculator, getStatLabel } from '../hooks/useStatCalculator'
 
 interface Props {
-  character: Character
-  equippedItems: EquippedItems
+  character: Knight
+  itemBonuses: ItemStatBonus[]
 }
 
 type StatKey = keyof Omit<FinalStats, 'bonuses'>
 
-const STAT_ORDER: StatKey[] = ['hp', 'attack', 'defense', 'speed', 'crit_rate', 'crit_damage']
+const STAT_ORDER: StatKey[] = ['hp', 'attack_physical', 'attack_magic', 'defense', 'speed', 'crit_rate', 'crit_damage']
 
-// Two rows for the gold divider
+// Three rows with a gold divider after row 1
 const STAT_ROWS: StatKey[][] = [
-  ['hp', 'attack', 'defense'],
-  ['speed', 'crit_rate', 'crit_damage'],
+  ['hp', 'attack_physical', 'attack_magic'],
+  ['defense', 'speed', 'crit_rate', 'crit_damage'],
 ]
 
 const STAT_META: Record<StatKey, { icon: string; color: string; accentBg: string; tooltip: string }> = {
-  hp:          { icon: '❤️', color: '#ef4444', accentBg: '#ef444412', tooltip: 'Total Health Points' },
-  attack:      { icon: '⚔️', color: '#f59e0b', accentBg: '#f59e0b12', tooltip: 'Attack Power' },
-  defense:     { icon: '🛡️', color: '#3b82f6', accentBg: '#3b82f612', tooltip: 'Defense Power' },
-  speed:       { icon: '💨', color: '#22c55e', accentBg: '#22c55e12', tooltip: 'Speed (turn order)' },
-  crit_rate:   { icon: '🎯', color: '#a855f7', accentBg: '#a855f712', tooltip: 'Probability of critical hit' },
-  crit_damage: { icon: '💥', color: '#fb923c', accentBg: '#fb923c12', tooltip: 'Damage multiplier on critical hit' },
+  hp:              { icon: '❤️', color: '#ef4444', accentBg: '#ef444412', tooltip: 'Total Health Points' },
+  attack_physical: { icon: '⚔️', color: '#f59e0b', accentBg: '#f59e0b12', tooltip: 'Physical Attack Power' },
+  attack_magic:    { icon: '✨', color: '#a78bfa', accentBg: '#a78bfa12', tooltip: 'Magic Attack Power' },
+  defense:         { icon: '🛡️', color: '#3b82f6', accentBg: '#3b82f612', tooltip: 'Defense Power' },
+  speed:           { icon: '💨', color: '#22c55e', accentBg: '#22c55e12', tooltip: 'Speed (turn order)' },
+  crit_rate:       { icon: '🎯', color: '#a855f7', accentBg: '#a855f712', tooltip: 'Probability of critical hit' },
+  crit_damage:     { icon: '💥', color: '#fb923c', accentBg: '#fb923c12', tooltip: 'Damage multiplier on critical hit' },
 }
 
+const PCT_KEYS: Set<StatKey> = new Set(['crit_rate', 'crit_damage'])
+
 function formatValue(key: StatKey, value: number): string {
-  if (key === 'crit_rate' || key === 'crit_damage') return `${value.toFixed(1)}%`
+  if (PCT_KEYS.has(key)) return `${value.toFixed(1)}%`
   return Math.round(value).toLocaleString()
 }
 
 function formatBonus(key: StatKey, value: number): string {
   if (value <= 0) return ''
-  if (key === 'crit_rate' || key === 'crit_damage') return `+${value.toFixed(1)}%`
+  if (PCT_KEYS.has(key)) return `+${value.toFixed(1)}%`
   return `+${Math.round(value).toLocaleString()}`
 }
 
@@ -64,7 +67,6 @@ function Tooltip({ text, children }: TooltipProps) {
           }}
         >
           {text}
-          {/* Tooltip arrow */}
           <div
             className="absolute top-full left-3"
             style={{
@@ -80,7 +82,7 @@ function Tooltip({ text, children }: TooltipProps) {
   )
 }
 
-// ─── Animated value (replays statPop animation on change) ─────────────────────
+// ─── Animated value ───────────────────────────────────────────────────────────
 
 interface AnimatedValueProps {
   value: string
@@ -95,7 +97,7 @@ function AnimatedValue({ value, className = '', style }: AnimatedValueProps) {
   useEffect(() => {
     if (prevValue.current !== value && spanRef.current) {
       spanRef.current.classList.remove('stat-value-animate')
-      void spanRef.current.offsetWidth // force reflow to restart animation
+      void spanRef.current.offsetWidth
       spanRef.current.classList.add('stat-value-animate')
       prevValue.current = value
     }
@@ -128,17 +130,19 @@ function GoldDivider() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function StatDisplay({ character, equippedItems }: Props) {
-  const { finalStats } = useStatCalculator(character, equippedItems)
+export default function StatDisplay({ character, itemBonuses }: Props) {
+  const { finalStats } = useStatCalculator(character, itemBonuses)
   if (!finalStats) return null
 
+  const s = character.knight_stats
   const baseStats: Record<StatKey, number> = {
-    hp:          character.base_hp,
-    attack:      character.base_attack,
-    defense:     character.base_defense,
-    speed:       character.base_speed,
-    crit_rate:   character.base_crit_rate,
-    crit_damage: character.base_crit_damage,
+    hp:              s?.base_hp              ?? 0,
+    attack_physical: s?.base_attack_physical ?? 0,
+    attack_magic:    s?.base_attack_magic    ?? 0,
+    defense:         s?.base_defense         ?? 0,
+    speed:           s?.base_speed           ?? 0,
+    crit_rate:       s?.base_crit_rate       ?? 0,
+    crit_damage:     s?.base_crit_damage     ?? 0,
   }
 
   let cardIndex = 0
@@ -171,18 +175,18 @@ export default function StatDisplay({ character, equippedItems }: Props) {
           <span className="text-gray-500 text-xs">{character.element}</span>
         </div>
         <div className="ml-auto text-xs text-gray-600 flex-shrink-0">
-          {Object.values(equippedItems).filter(Boolean).length} / 4 items
+          {new Set(itemBonuses.map(b => b.item_id)).size} / 4 items
         </div>
       </div>
 
-      {/* Stats grid with gold divider between the two rows */}
+      {/* Stats grid with gold divider between rows */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {STAT_ROWS.map((row, rowIdx) => (
           <Fragment key={rowIdx}>
             {row.map(key => {
-              const total    = finalStats[key]
-              const bonus    = finalStats.bonuses[key]
-              const base     = baseStats[key]
+              const total     = finalStats[key]
+              const bonus     = finalStats.bonuses[key]
+              const base      = baseStats[key]
               const bonusText = formatBonus(key, bonus)
               const hasBonus  = bonus > 0
               const meta      = STAT_META[key]
@@ -263,7 +267,6 @@ export default function StatDisplay({ character, equippedItems }: Props) {
               )
             })}
 
-            {/* Gold divider between row 1 and row 2 */}
             {rowIdx === 0 && <GoldDivider />}
           </Fragment>
         ))}

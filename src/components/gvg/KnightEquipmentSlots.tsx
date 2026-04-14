@@ -5,7 +5,7 @@ import { ELEMENT_COLORS, EQUIPMENT_SLOTS } from '../../types/index'
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  knight: Knight
+  knight?: Knight
   items: Record<EquipmentSlotType, Equipment | null>
   onSlotClick: (slotType: EquipmentSlotType) => void
   readonly?: boolean
@@ -169,16 +169,7 @@ export default function KnightEquipmentSlots({
   onSlotClick,
   readonly = false,
 }: Props) {
-  const elementColor = ELEMENT_COLORS[knight.element] ?? '#6b7280'
-
-  // Collect unique set names and their counts
-  const setCounts: Record<string, number> = {}
-  Object.values(items).forEach(eq => {
-    if (eq?.set_name) {
-      setCounts[eq.set_name] = (setCounts[eq.set_name] ?? 0) + 1
-    }
-  })
-  const setSummary = Object.entries(setCounts)
+  const elementColor = knight ? (ELEMENT_COLORS[knight.element] ?? '#6b7280') : '#6b7280'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
@@ -212,7 +203,7 @@ export default function KnightEquipmentSlots({
             border: `2px solid ${elementColor}`,
             flexShrink: 0,
           }}>
-            {knight.image_url ? (
+            {knight?.image_url ? (
               <img
                 src={knight.image_url}
                 alt={knight.name}
@@ -231,7 +222,7 @@ export default function KnightEquipmentSlots({
                 fontWeight: 'bold',
                 color: elementColor,
               }}>
-                {knight.name.charAt(0).toUpperCase()}
+                {knight ? knight.name.charAt(0).toUpperCase() : '?'}
               </div>
             )}
           </div>
@@ -269,27 +260,7 @@ export default function KnightEquipmentSlots({
         </div>
       </div>
 
-      {/* Set name pills */}
-      {setSummary.length > 0 && (
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {setSummary.map(([setName, count]) => (
-            <span
-              key={setName}
-              style={{
-                fontSize: '9px',
-                color: '#f59e0b',
-                background: '#f59e0b18',
-                border: '1px solid #f59e0b33',
-                borderRadius: '99px',
-                padding: '1px 6px',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {setName} ×{count}
-            </span>
-          ))}
-        </div>
-      )}
+
     </div>
   )
 }

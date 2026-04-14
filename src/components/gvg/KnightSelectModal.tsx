@@ -210,8 +210,31 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
     setLoading(true)
     supabase
       .from('knights')
-      .select('id, name, element, class, stars, image_url, img_skill_1, img_skill_2, grade')
-      .order('name')
+      .select(`
+        id,
+        name,
+        element,
+        class,
+        grade,
+        image_url,
+        img_skill_1,
+        img_skill_2,
+        knight_stats (
+          base_hp,
+          base_attack_physical,
+          base_attack_magic,
+          base_defense,
+          base_speed,
+          base_crit_rate,
+          base_crit_damage,
+          base_resistance,
+          base_effective_hit_rate,
+          base_block_rate,
+          base_weakness,
+          base_damage_taken_reduction
+        )
+      `)
+      .order('name', { ascending: true })
       .then(({ data, error }) => {
         if (!error && data) {
           setKnights(data as Knight[])
@@ -269,7 +292,7 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
 
   // ANY knight as a synthetic Knight object
   function handleSelectAny() {
-    onSelect({ id: 'any', name: 'ANY', element: 'balance', class: 'any', stars: 0 })
+    onSelect({ id: 'any', name: 'ANY', element: 'balance', class: 'any' })
     onClose()
   }
 
