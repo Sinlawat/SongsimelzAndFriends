@@ -49,8 +49,8 @@ function SlotButton({
       onMouseLeave={() => setHovered(false)}
       title={title}
       style={{
-        width: '56px',
-        height: '56px',
+        width: 'clamp(40px,8vw,56px)',
+        height: 'clamp(40px,8vw,56px)',
         borderRadius: '10px',
         position: 'relative',
         cursor: readonly ? 'default' : 'pointer',
@@ -182,8 +182,8 @@ export default function KnightEquipmentSlots({
       */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '68px 56px 56px 56px',
-        gridTemplateRows: '56px 56px',
+        gridTemplateColumns: 'clamp(52px,9vw,68px) clamp(40px,8vw,56px) clamp(40px,8vw,56px) clamp(40px,8vw,56px)',
+        gridTemplateRows: 'clamp(40px,8vw,56px) clamp(40px,8vw,56px)',
         gap: '6px',
         alignItems: 'center',
       }}>
@@ -196,8 +196,8 @@ export default function KnightEquipmentSlots({
           justifyContent: 'center',
         }}>
           <div style={{
-            width: '60px',
-            height: '60px',
+            width: 'clamp(44px,9vw,60px)',
+            height: 'clamp(44px,9vw,60px)',
             borderRadius: '50%',
             overflow: 'hidden',
             border: `2px solid ${elementColor}`,

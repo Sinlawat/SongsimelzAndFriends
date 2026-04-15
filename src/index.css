@@ -6,6 +6,12 @@
   * {
     box-sizing: border-box;
   }
+  img {
+    max-width: 100%;
+  }
+  .no-scrollbar {
+    overflow-x: hidden;
+  }
   body {
     background-color: #0a0c14;
     color: #e2e8f0;

@@ -348,7 +348,7 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
         onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = '#0f172a' }}
       >
         {/* Left: formation badge + knight avatars */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {knightsInOrder.map((knight, i) => (
               <KnightAvatar key={i} knight={knight} size={40} showName={false} />
@@ -456,7 +456,7 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
                 🗡️ อุปกรณ์
               </p>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                 {[counter.leader, counter.knight2, counter.knight3]
                   .filter(Boolean)
                   .map(knight => {
@@ -782,7 +782,7 @@ function DefenseGroup({ result, onContribute, newestCounterId, onOpenLogin, isAd
 
         <div className="px-6 py-4 flex items-start justify-between gap-4 flex-wrap">
           {/* Defense knights */}
-          <div className="flex items-end gap-4">
+          <div className="flex items-end flex-wrap gap-3">
             <KnightAvatar knight={defense.leader}  size={48} showName />
             <KnightAvatar knight={defense.knight2} size={48} showName />
             {defense.knight3 && <KnightAvatar knight={defense.knight3} size={48} showName />}
@@ -1184,8 +1184,8 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
 
   return (
     <div
-      className="min-h-screen pb-16"
-      style={{ backgroundColor: '#0a0c14' }}
+      className="min-h-screen pb-16 no-scrollbar"
+      style={{ backgroundColor: '#0a0c14', width: '100%', maxWidth: '100vw', overflowX: 'hidden' }}
     >
       {/* Decorative grid */}
       <div

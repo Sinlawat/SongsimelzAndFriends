@@ -131,8 +131,8 @@ function SlotCell({ slot, onSlotClick, onSlotRemove, canAdd, readonly, showSkill
         onMouseLeave={() => setHovered(false)}
         onClick={() => !hasKnight && canAdd && !readonly && onSlotClick?.(slot.slotNumber)}
         style={{
-          width: '80px',
-          height: '80px',
+          width: 'clamp(56px, 10vw, 80px)',
+          height: 'clamp(56px, 10vw, 80px)',
           borderRadius: '10px',
           position: 'relative',
           background: bgColor,
@@ -266,7 +266,7 @@ export default function FormationBoard({
       <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 'bold', letterSpacing: '0.08em' }}>
         BACK
       </span>
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 'clamp(4px, 1vw, 10px)', justifyContent: 'center', flexWrap: 'wrap' }}>
         {backSlots.map(slot => (
           <SlotCell
             key={slot.slotNumber}
@@ -291,7 +291,7 @@ export default function FormationBoard({
       <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 'bold', letterSpacing: '0.08em' }}>
         FRONT
       </span>
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 'clamp(4px, 1vw, 10px)', justifyContent: 'center', flexWrap: 'wrap' }}>
         {frontSlots.map(slot => (
           <SlotCell
             key={slot.slotNumber}
