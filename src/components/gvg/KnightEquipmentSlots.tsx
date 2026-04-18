@@ -9,6 +9,7 @@ interface Props {
   items: Record<EquipmentSlotType, Equipment | null>
   onSlotClick: (slotType: EquipmentSlotType) => void
   readonly?: boolean
+  imagesLoading?: boolean
 }
 
 // ─── Slot icons ───────────────────────────────────────────────────────────────
@@ -19,6 +20,13 @@ const SLOT_ICON: Record<string, string> = {
   ring:   '💍',
 }
 
+const SET_COLORS = ['#f59e0b', '#3b82f6', '#a855f7', '#22c55e', '#ef4444', '#06b6d4']
+
+function getSetColor(setName: string): string {
+  const hash = setName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+  return SET_COLORS[hash % SET_COLORS.length]
+}
+
 // ─── Single slot button ───────────────────────────────────────────────────────
 
 function SlotButton({
@@ -26,11 +34,13 @@ function SlotButton({
   equipment,
   onClick,
   readonly,
+  imagesLoading,
 }: {
   slotType: EquipmentSlotType
   equipment: Equipment | null
   onClick: () => void
   readonly: boolean
+  imagesLoading?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   const slotMeta  = EQUIPMENT_SLOTS.find(s => s.type === slotType)!
@@ -39,7 +49,7 @@ function SlotButton({
   const hasEquip  = equipment !== null
 
   const title = hasEquip
-    ? `${slotMeta.label}: ${equipment!.name}`
+    ? `${equipment!.name}${equipment!.set_name ? ` (${equipment!.set_name})` : ''}`
     : slotMeta.label
 
   return (
@@ -68,7 +78,7 @@ function SlotButton({
     >
       {hasEquip ? (
         <>
-          {/* Equipment image or fallback */}
+          {/* Equipment image, loading spinner, or set-color placeholder */}
           {equipment!.image_url ? (
             <img
               src={equipment!.image_url}
@@ -82,32 +92,52 @@ function SlotButton({
               }}
               onError={e => { e.currentTarget.style.display = 'none' }}
             />
+          ) : imagesLoading ? (
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div style={{
+                width: '16px', height: '16px', borderRadius: '50%',
+                border: '2px solid #37414166', borderTopColor: '#f59e0b',
+                animation: 'spin 0.7s linear infinite',
+              }} />
+            </div>
+          ) : equipment!.set_name ? (
+            /* Set-color placeholder: hashed color per set */
+            (() => {
+              const color = getSetColor(equipment!.set_name!)
+              return (
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  background: color + '22',
+                  border: `2px solid ${color}`,
+                  borderRadius: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '2px',
+                }}>
+                  <span style={{ fontSize: '16px', fontWeight: 'bold', color, lineHeight: 1 }}>
+                    {equipment!.set_name!.charAt(0).toUpperCase()}
+                  </span>
+                  {equipment!.id.startsWith('imported-') && (
+                    <span style={{ fontSize: '7px', color: '#6b7280' }}>
+                      #{equipment!.id.split('-')[1]}
+                    </span>
+                  )}
+                </div>
+              )
+            })()
           ) : (
             <div style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '2px',
-              padding: '2px',
+              position: 'absolute', inset: 0,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              gap: '2px', padding: '2px',
             }}>
               <span style={{ fontSize: '20px', lineHeight: 1 }}>{icon}</span>
-              {equipment!.set_name && (
-                <span style={{
-                  fontSize: '7px',
-                  color: '#f59e0b',
-                  textAlign: 'center',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  width: '100%',
-                  padding: '0 2px',
-                }}>
-                  {equipment!.set_name}
-                </span>
-              )}
             </div>
           )}
 
@@ -168,6 +198,7 @@ export default function KnightEquipmentSlots({
   items,
   onSlotClick,
   readonly = false,
+  imagesLoading = false,
 }: Props) {
   const elementColor = knight ? (ELEMENT_COLORS[knight.element] ?? '#6b7280') : '#6b7280'
 
@@ -230,22 +261,22 @@ export default function KnightEquipmentSlots({
 
         {/* weapon1 — col 2, row 1 */}
         <div style={{ gridColumn: 2, gridRow: 1 }}>
-          <SlotButton slotType="weapon1" equipment={items.weapon1} onClick={() => onSlotClick('weapon1')} readonly={readonly} />
+          <SlotButton slotType="weapon1" equipment={items.weapon1} onClick={() => onSlotClick('weapon1')} readonly={readonly} imagesLoading={imagesLoading} />
         </div>
 
         {/* weapon2 — col 2, row 2 */}
         <div style={{ gridColumn: 2, gridRow: 2 }}>
-          <SlotButton slotType="weapon2" equipment={items.weapon2} onClick={() => onSlotClick('weapon2')} readonly={readonly} />
+          <SlotButton slotType="weapon2" equipment={items.weapon2} onClick={() => onSlotClick('weapon2')} readonly={readonly} imagesLoading={imagesLoading} />
         </div>
 
         {/* armor1 — col 3, row 1 */}
         <div style={{ gridColumn: 3, gridRow: 1 }}>
-          <SlotButton slotType="armor1" equipment={items.armor1} onClick={() => onSlotClick('armor1')} readonly={readonly} />
+          <SlotButton slotType="armor1" equipment={items.armor1} onClick={() => onSlotClick('armor1')} readonly={readonly} imagesLoading={imagesLoading} />
         </div>
 
         {/* armor2 — col 3, row 2 */}
         <div style={{ gridColumn: 3, gridRow: 2 }}>
-          <SlotButton slotType="armor2" equipment={items.armor2} onClick={() => onSlotClick('armor2')} readonly={readonly} />
+          <SlotButton slotType="armor2" equipment={items.armor2} onClick={() => onSlotClick('armor2')} readonly={readonly} imagesLoading={imagesLoading} />
         </div>
 
         {/* ring — col 4, rows 1-2, vertically centered */}
@@ -256,7 +287,7 @@ export default function KnightEquipmentSlots({
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-          <SlotButton slotType="ring" equipment={items.ring} onClick={() => onSlotClick('ring')} readonly={readonly} />
+          <SlotButton slotType="ring" equipment={items.ring} onClick={() => onSlotClick('ring')} readonly={readonly} imagesLoading={imagesLoading} />
         </div>
       </div>
 

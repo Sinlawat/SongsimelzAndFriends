@@ -1,15 +1,72 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import {
+  getSavedSets, saveSet, deleteSavedSet,
+} from '../lib/savedSets'
+import type { SavedSet, SavedSetItem } from '../lib/savedSets'
 import type {
-  Knight, KnightStats, ItemStatBonus, Equipment, EquipmentSlotType,
-  TranscendBonus,
+  Knight, KnightStats, Equipment, EquipmentSlotType,
+  TranscendBonus, ParsedEquipmentItem,
 } from '../types/index'
-import { ELEMENT_ICONS, TRANSCEND_STAT_MAP, getKnightStats } from '../types/index'
-import StatDisplay from '../components/StatDisplay'
+import { ELEMENT_ICONS, TRANSCEND_STAT_MAP, getKnightStats, FLAT_PERCENT_STATS, EQUIPMENT_SLOTS } from '../types/index'
 import KnightEquipmentSlots from '../components/gvg/KnightEquipmentSlots'
 import EquipmentPickerModal from '../components/gvg/EquipmentPickerModal'
 import KnightSelectModal from '../components/gvg/KnightSelectModal'
 import KnightAvatar from '../components/gvg/KnightAvatar'
+import JsonUploader from '../components/JsonUploader'
+import ImportedEquipmentList from '../components/ImportedEquipmentList'
+import GearOptimizer from '../components/GearOptimizer'
+import { useAuth } from '../contexts/AuthContext'
+
+// ─── Imported item bonus calculation ─────────────────────────────────────────
+
+function calcImportedItemBonus(
+  assignedItems: Record<EquipmentSlotType, ParsedEquipmentItem | null>,
+  baseStats: KnightStats,
+): Record<string, number> {
+  const bonus: Record<string, number> = {}
+
+  Object.values(assignedItems).forEach(item => {
+    if (!item) return
+
+    const allStats = [...item.main_stats, ...item.sub_stats]
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    allStats.forEach((stat: any) => {
+      const key = stat.stat_name
+
+      if (key === 'all_attack') {
+        const physBase = baseStats.base_attack_physical ?? 0
+        const magBase  = baseStats.base_attack_magic    ?? 0
+        if (stat.is_percent) {
+          bonus['base_attack_physical'] = (bonus['base_attack_physical'] ?? 0) + (physBase * stat.value / 100)
+          bonus['base_attack_magic']    = (bonus['base_attack_magic']    ?? 0) + (magBase  * stat.value / 100)
+        } else {
+          bonus['base_attack_physical'] = (bonus['base_attack_physical'] ?? 0) + stat.value
+          bonus['base_attack_magic']    = (bonus['base_attack_magic']    ?? 0) + stat.value
+        }
+        return
+      }
+
+      if (!(key in baseStats) && !FLAT_PERCENT_STATS.has(key)) return
+
+      const baseVal = (baseStats as unknown as Record<string, number>)[key] ?? 0
+
+      if (stat.is_percent) {
+        // percent of base — e.g. "HP (%)" → multiply
+        bonus[key] = (bonus[key] ?? 0) + (baseVal * stat.value / 100)
+      } else if (stat.is_flat_percent) {
+        // flat percentage point — e.g. "Crit Rate 4%" → add directly
+        bonus[key] = (bonus[key] ?? 0) + stat.value
+      } else {
+        // flat number — e.g. "Speed 12" → add directly
+        bonus[key] = (bonus[key] ?? 0) + stat.value
+      }
+    })
+  })
+
+  return bonus
+}
 
 // ─── Transcend calculation ────────────────────────────────────────────────────
 
@@ -27,17 +84,37 @@ function calculateTranscendStats(
     ...globalTranscends.filter(t => activeLevels.includes(t.transcend_level)),
   ]
 
+  // Stats where a percent transcend bonus means flat addition, not multiply-base
+  const FLAT_ADD_TRANSCEND_STATS = new Set([
+    'base_crit_rate',
+    'base_crit_damage',
+    'base_weakness',
+    'base_resistance',
+    'base_effective_hit_rate',
+    'base_block_rate',
+    'base_damage_taken_reduction',
+  ])
+
   const result = { ...base }
 
   allBonuses.forEach(bonus => {
     const fields = TRANSCEND_STAT_MAP[bonus.stat_name] ?? []
     fields.forEach(field => {
-      const key = field as keyof KnightStats
+      const key    = field as keyof KnightStats
       const baseVal = Number(base[key] ?? 0)
-      const cur     = Number(result[key] ?? 0)
-      ;(result as Record<string, unknown>)[key] = bonus.is_percent
-        ? cur + (baseVal * bonus.value / 100)
-        : cur + bonus.value
+      const cur    = Number((result as Record<string, unknown>)[key] ?? 0)
+
+      if (bonus.is_percent) {
+        if (FLAT_ADD_TRANSCEND_STATS.has(field)) {
+          // e.g. crit_rate 18% → add 18 directly
+          ;(result as Record<string, unknown>)[key] = cur + bonus.value
+        } else {
+          // e.g. hp 18% → base_hp × 0.18
+          ;(result as Record<string, unknown>)[key] = cur + baseVal * bonus.value / 100
+        }
+      } else {
+        ;(result as Record<string, unknown>)[key] = cur + bonus.value
+      }
     })
   })
 
@@ -63,28 +140,49 @@ const STAT_ROWS_CONFIG: { label: string; key: StatRowKey; pct?: boolean }[] = [
   { label: 'DMG Reduction',   key: 'base_damage_taken_reduction' },
 ]
 
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StatCalculatorPage() {
+  const { user } = useAuth()
+
+  const [loginWarning,     setLoginWarning]     = useState(false)
   const [selectedKnight,   setSelectedKnight]   = useState<Knight | null>(null)
   const [openKnightModal,  setOpenKnightModal]  = useState(false)
-  const [showStats,        setShowStats]        = useState(false)
 
   const [equippedItems,  setEquippedItems]  = useState<Record<EquipmentSlotType, Equipment | null>>({
     weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null,
   })
   const [openEquipSlot,  setOpenEquipSlot]  = useState<EquipmentSlotType | null>(null)
-  const [itemBonuses,    setItemBonuses]    = useState<ItemStatBonus[]>([])
 
   const [transcendLevel,   setTranscendLevel]   = useState(0)
   const [knightTranscends, setKnightTranscends] = useState<TranscendBonus[]>([])
   const [globalTranscends, setGlobalTranscends] = useState<TranscendBonus[]>([])
   const [transcendLoaded,  setTranscendLoaded]  = useState(false)
 
-  const statsRef = useRef<HTMLDivElement>(null)
+  const [importedItems,         setImportedItems]         = useState<ParsedEquipmentItem[]>([])
+  const [showImported,          setShowImported]          = useState(false)
+  const [assignedImportedItems, setAssignedImportedItems] = useState<Record<EquipmentSlotType, ParsedEquipmentItem | null>>({
+    weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null,
+  })
+  const [showOptimizer,         setShowOptimizer]         = useState(false)
+  const [equipmentImages,       setEquipmentImages]       = useState<Record<EquipmentSlotType, string | null>>({
+    weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null,
+  })
+  const [imagesLoading,         setImagesLoading]         = useState(false)
+  const [selectedWeaponType,    setSelectedWeaponType]    = useState<'physical' | 'magic'>('physical')
+
+  const [savedSets, setSavedSets] = useState<SavedSet[]>([])
+
+  const savedSetsRef = useRef<HTMLDivElement>(null)
+
+  // Load saved sets from Supabase on mount
+  useEffect(() => {
+    getSavedSets().then(sets => setSavedSets(sets))
+  }, [])
 
   useEffect(() => {
-    if (!selectedKnight) { setShowStats(false); return }
+    if (!selectedKnight) return
     setTranscendLevel(0)
     setTranscendLoaded(false)
     Promise.all([
@@ -97,18 +195,77 @@ export default function StatCalculatorPage() {
     })
   }, [selectedKnight])
 
+  // Fetch equipment images from DB whenever assigned imported items change
   useEffect(() => {
-    const ids = Object.values(equippedItems).filter(Boolean).map(eq => eq!.id)
-    if (ids.length === 0) { setItemBonuses([]); return }
-    supabase
-      .from('item_stat_bonuses').select('*').in('item_id', ids)
-      .then(({ data }) => setItemBonuses(data ?? []))
-  }, [equippedItems])
+    const hasAny = Object.values(assignedImportedItems).some(v => v !== null)
+    if (!hasAny) {
+      setEquipmentImages({ weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null })
+      return
+    }
+    setImagesLoading(true)
+    const fetchImages = async () => {
+      const newImages: Record<EquipmentSlotType, string | null> = {
+        weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null,
+      }
+      await Promise.all(
+        EQUIPMENT_SLOTS.map(async slot => {
+          const assigned = assignedImportedItems[slot.type]
+          if (!assigned?.set_name) return
+          let query = supabase
+            .from('equipment')
+            .select('image_url')
+            .eq('slot_type', slot.equipType)
+            .eq('set_name', assigned.set_name)
+          if (slot.equipType === 'weapon') {
+            query = query.eq('equip_type', selectedWeaponType)
+          }
+          const { data } = await query.limit(1).maybeSingle()
+          if (data?.image_url) newImages[slot.type] = data.image_url
+        })
+      )
+      setEquipmentImages(newImages)
+      setImagesLoading(false)
+    }
+    fetchImages()
+  }, [assignedImportedItems, selectedWeaponType])
 
-  function handleCalculate() {
+  async function handleSaveSet() {
+    if (!user) { setLoginWarning(true); return }
+    setLoginWarning(false)
     if (!selectedKnight) return
-    setShowStats(true)
-    setTimeout(() => statsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    const now = new Date()
+    const timestamp = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+    const setNames = [
+      ...Object.values(equippedItems).map(e => e?.set_name),
+      ...Object.values(assignedImportedItems).map(i => i?.set_name),
+    ].filter((s): s is string => !!s)
+    const uniqueSets = [...new Set(setNames)]
+    const equipment_items: SavedSetItem[] = EQUIPMENT_SLOTS
+      .map(slot => assignedImportedItems[slot.type])
+      .filter((item): item is ParsedEquipmentItem => item !== null)
+      .map(item => ({
+        run_no:            item.run_no,
+        slot_type:         item.slot_type,
+        name:              item.name,
+        set_name:          item.set_name ?? null,
+        main_stat_display: item.main_stats.map(s => s.display).join(', '),
+      }))
+    const saved = await saveSet({
+      knight_name:     selectedKnight.name,
+      transcend_level: transcendLevel,
+      equipment_sets:  uniqueSets,
+      equipment_items,
+      timestamp,
+    })
+    if (saved) {
+      setSavedSets(prev => [saved, ...prev])
+      setTimeout(() => savedSetsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    }
+  }
+
+  async function deleteSet(id: string) {
+    await deleteSavedSet(id)
+    setSavedSets(prev => prev.filter(s => s.id !== id))
   }
 
   // Build transcended stats for display and passing to StatDisplay
@@ -117,10 +274,30 @@ export default function StatCalculatorPage() {
     ? calculateTranscendStats(baseKnightStats, transcendLevel, knightTranscends, globalTranscends)
     : null
 
-  // Knight with transcended stats injected (for StatDisplay / useStatCalculator)
-  const knightForCalc: Knight | null = selectedKnight && transcendedStats
-    ? { ...selectedKnight, knight_stats: transcendedStats }
-    : selectedKnight
+  // Imported item bonuses (per stat key → flat bonus value)
+  const importedBonus = baseKnightStats
+    ? calcImportedItemBonus(assignedImportedItems, baseKnightStats)
+    : {}
+
+
+  // Merge assigned imported items with fetched images into Equipment-shaped objects
+  const equippedForDisplay: Record<EquipmentSlotType, Equipment | null> =
+    Object.fromEntries(
+      EQUIPMENT_SLOTS.map(slot => {
+        // Prefer DB-assigned equipment; fall back to imported item representation
+        if (equippedItems[slot.type]) return [slot.type, equippedItems[slot.type]]
+        const imported = assignedImportedItems[slot.type]
+        if (!imported) return [slot.type, null]
+        const eq: Equipment = {
+          id:        `imported-${imported.run_no}-${slot.type}`,
+          name:      imported.name,
+          slot_type: slot.equipType,
+          set_name:  imported.set_name ?? undefined,
+          image_url: equipmentImages[slot.type] ?? undefined,
+        }
+        return [slot.type, eq]
+      })
+    ) as Record<EquipmentSlotType, Equipment | null>
 
   return (
     <>
@@ -224,10 +401,13 @@ export default function StatCalculatorPage() {
                       gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px',
                     }}>
                       {STAT_ROWS_CONFIG.map(({ label, key, pct }) => {
-                        const baseVal      = Number(baseKnightStats[key] ?? 0)
-                        const transcendVal = transcendedStats ? Number(transcendedStats[key] ?? 0) : baseVal
-                        const bonus        = transcendVal - baseVal
-                        const fmt          = (v: number) => pct ? `${v.toFixed(1)}%` : Math.round(v).toLocaleString()
+                        const baseVal       = Number(baseKnightStats[key] ?? 0)
+                        const transcendVal  = transcendedStats ? Number(transcendedStats[key] ?? 0) : baseVal
+                        const transcendBns  = transcendVal - baseVal
+                        const itemBns       = importedBonus[key] ?? 0
+                        const total         = transcendVal + itemBns
+                        const fmt           = (v: number) => pct ? `${v.toFixed(1)}%` : Math.round(v).toLocaleString()
+                        const anyBonus      = transcendBns > 0 || itemBns > 0
                         return (
                           <div key={label} style={{
                             background: '#0f172a', border: '1px solid #1e293b',
@@ -238,15 +418,20 @@ export default function StatCalculatorPage() {
                             </div>
                             <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', flexWrap: 'wrap' }}>
                               <span style={{ fontSize: '15px', color: 'white', fontWeight: 'bold' }}>
-                                {fmt(transcendVal)}
+                                {fmt(total)}
                               </span>
-                              {bonus > 0 && (
+                              {transcendBns > 0 && (
+                                <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 'bold' }}>
+                                  (+{fmt(transcendBns)})
+                                </span>
+                              )}
+                              {itemBns > 0 && (
                                 <span style={{ fontSize: '10px', color: '#22c55e', fontWeight: 'bold' }}>
-                                  (+{fmt(bonus)})
+                                  (+{fmt(itemBns)} items)
                                 </span>
                               )}
                             </div>
-                            {bonus > 0 && (
+                            {anyBonus && (
                               <div style={{ fontSize: '9px', color: '#4b5563', marginTop: '1px' }}>
                                 Base: {fmt(baseVal)}
                               </div>
@@ -360,9 +545,10 @@ export default function StatCalculatorPage() {
               <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#0d1117', border: '1px solid #1e293b' }}>
                 <KnightEquipmentSlots
                   knight={selectedKnight ?? undefined}
-                  items={equippedItems}
+                  items={equippedForDisplay}
                   onSlotClick={slot => setOpenEquipSlot(slot)}
                   readonly={false}
+                  imagesLoading={imagesLoading}
                 />
               </div>
 
@@ -388,9 +574,60 @@ export default function StatCalculatorPage() {
                 </div>
               )}
 
-              {/* ── Calculate button ────────────────────────────────────────── */}
+              {/* ── JSON Import ─────────────────────────────────────────────── */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between', marginBottom: '10px',
+                }}>
+                  <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#f59e0b' }}>
+                    📂 นำเข้าอุปกรณ์จาก JSON
+                  </span>
+                  {importedItems.length > 0 && (
+                    <button
+                      onClick={() => setShowImported(p => !p)}
+                      style={{
+                        fontSize: '11px', padding: '4px 12px',
+                        borderRadius: '6px', border: '1px solid #374151',
+                        background: 'transparent', color: '#9ca3af',
+                        cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#6b7280'; e.currentTarget.style.color = '#e2e8f0' }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#374151'; e.currentTarget.style.color = '#9ca3af' }}
+                    >
+                      {showImported ? 'ซ่อน' : `ดูอุปกรณ์ (${importedItems.length})`}
+                    </button>
+                  )}
+                </div>
+
+                <JsonUploader
+                  onImport={items => {
+                    setImportedItems(items)
+                    setShowImported(true)
+                    setAssignedImportedItems({
+                      weapon1: null, weapon2: null,
+                      armor1:  null, armor2:  null, ring: null,
+                    })
+                  }}
+                />
+
+                {showImported && importedItems.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <ImportedEquipmentList
+                      items={importedItems}
+                      assignedItems={assignedImportedItems}
+                      onAssign={(slotType, item) =>
+                        setAssignedImportedItems(prev => ({ ...prev, [slotType]: item }))
+                      }
+                      onOptimize={() => setShowOptimizer(true)}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* ── บันทึกเซ็ท button ───────────────────────────────────────── */}
               <button
-                onClick={handleCalculate}
+                onClick={handleSaveSet}
                 disabled={!selectedKnight}
                 className="w-full py-3.5 rounded-xl font-black text-sm uppercase tracking-widest transition-all duration-200"
                 style={{
@@ -414,23 +651,163 @@ export default function StatCalculatorPage() {
                   }
                 }}
               >
-                {selectedKnight ? '⚡ Calculate Stats' : 'Select a Knight First'}
+                {selectedKnight ? '💾 บันทึกเซ็ท' : 'เลือกอัศวินก่อน'}
               </button>
+
+              {loginWarning && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  background: '#2d1a1a',
+                  border: '1px solid #ef444466',
+                  color: '#fca5a5',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                }}>
+                  ⚠️ กรุณา Login ก่อนบันทึกเซ็ท
+                </div>
+              )}
             </div>
           </div>
 
-          {/* ── Stats section ───────────────────────────────────────────────── */}
-          <div
-            ref={statsRef}
-            className="w-full max-w-2xl mt-8 transition-all duration-500"
-            style={{
-              opacity:       showStats ? 1 : 0,
-              transform:     showStats ? 'translateY(0)' : 'translateY(20px)',
-              pointerEvents: showStats ? 'all' : 'none',
-            }}
-          >
-            {showStats && knightForCalc && (
-              <StatDisplay character={knightForCalc} itemBonuses={itemBonuses} />
+          {/* ── Saved sets panel ─────────────────────────────────────────────── */}
+          <div ref={savedSetsRef} className="w-full max-w-2xl mt-8">
+            {/* Panel header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: '12px',
+            }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#e94560' }}>
+                💾 เซ็ทที่บันทึกไว้ {savedSets.length > 0 ? `(${savedSets.length})` : ''}
+              </span>
+              {savedSets.length > 0 && (
+                <button
+                  onClick={async () => {
+                    await Promise.all(savedSets.map(s => deleteSavedSet(s.id)))
+                    setSavedSets([])
+                  }}
+                  style={{
+                    fontSize: '10px', color: '#6b7280', background: 'none',
+                    border: 'none', cursor: 'pointer', padding: '2px 8px',
+                    borderRadius: '4px', transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#ef4444' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#6b7280' }}
+                >
+                  ล้างทั้งหมด
+                </button>
+              )}
+            </div>
+
+            {savedSets.length === 0 ? (
+              <p style={{ fontSize: '12px', color: '#374151', textAlign: 'center', padding: '24px 0' }}>
+                ยังไม่มีเซ็ทที่บันทึก
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {savedSets.map(s => (
+                  <div
+                    key={s.id}
+                    style={{
+                      background: '#0f172a',
+                      borderLeft: '4px solid #e94560',
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Card header row */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '10px 14px',
+                      borderBottom: '1px solid #1e293b',
+                    }}>
+                      <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#e2e8f0', flex: 1, minWidth: 0,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.knight_name}
+                      </span>
+                      {s.transcend_level > 0 && (
+                        <span style={{
+                          fontSize: '10px', color: '#f59e0b',
+                          background: '#1c1a05', border: '1px solid #f59e0b44',
+                          borderRadius: '4px', padding: '1px 6px', flexShrink: 0,
+                        }}>
+                          T{s.transcend_level}
+                        </span>
+                      )}
+                      <span style={{ fontSize: '9px', color: '#4b5563', flexShrink: 0 }}>
+                        {s.timestamp}
+                      </span>
+                      <button
+                        onClick={() => deleteSet(s.id)}
+                        style={{
+                          fontSize: '11px', color: '#4b5563', background: 'none',
+                          border: 'none', cursor: 'pointer', padding: '2px 6px',
+                          borderRadius: '4px', transition: 'color 0.15s, background 0.15s',
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = '#2d1a1a' }}
+                        onMouseLeave={e => { e.currentTarget.style.color = '#4b5563'; e.currentTarget.style.background = 'none' }}
+                      >
+                        ลบ
+                      </button>
+                    </div>
+
+                    {/* Set badges */}
+                    {(s.equipment_sets?.length ?? 0) > 0 && (
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', padding: '8px 14px 0' }}>
+                        {(s.equipment_sets ?? []).map(name => (
+                          <span key={name} style={{
+                            fontSize: '9px', color: '#e94560',
+                            background: '#1e0a0e', border: '1px solid #e9456033',
+                            borderRadius: '20px', padding: '2px 8px', fontWeight: 'bold',
+                          }}>
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Equipment items list */}
+                    {(s.equipment_items?.length ?? 0) > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 14px 12px' }}>
+                        {(s.equipment_items ?? []).map((item, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {/* run_no badge */}
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              minWidth: '28px', height: '20px',
+                              background: '#e94560', borderRadius: '5px',
+                              fontSize: '11px', fontWeight: 'bold', color: '#fff',
+                              padding: '0 4px', flexShrink: 0,
+                            }}>
+                              {item.run_no}
+                            </span>
+                            {/* item name */}
+                            <span style={{
+                              fontSize: '12px', color: '#e2e8f0', fontWeight: 'bold',
+                              flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                              {item.name}
+                            </span>
+                            {/* main stat */}
+                            {item.main_stat_display && (
+                              <span style={{ fontSize: '10px', color: '#6b7280', flexShrink: 0 }}>
+                                {item.main_stat_display}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '11px', color: '#374151', padding: '8px 14px 12px', margin: 0 }}>
+                        ไม่มีข้อมูลอุปกรณ์
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
@@ -461,6 +838,21 @@ export default function StatCalculatorPage() {
             setOpenEquipSlot(null)
           }}
           onClose={() => setOpenEquipSlot(null)}
+        />
+      )}
+
+      {/* Gear optimizer modal */}
+      {showOptimizer && baseKnightStats && (
+        <GearOptimizer
+          isOpen={showOptimizer}
+          onClose={() => setShowOptimizer(false)}
+          importedItems={importedItems}
+          baseStats={baseKnightStats}
+          onApply={(assigned, wt) => {
+            setAssignedImportedItems(assigned)
+            setSelectedWeaponType(wt)
+            setShowOptimizer(false)
+          }}
         />
       )}
     </>

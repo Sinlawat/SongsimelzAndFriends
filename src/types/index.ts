@@ -298,6 +298,201 @@ export const TRANSCEND_STAT_MAP: Record<string, string[]> = {
   speed:                  ['base_speed'],
 }
 
+// ─── Equipment Import Types ───────────────────────────────────────────────────
+
+// Raw JSON format from the game export file
+export interface RawEquipmentStat {
+  name: string
+  value: string
+  upgrade_level?: number | null
+}
+
+export interface RawEquipmentItem {
+  run_no: number
+  name: string
+  upgrade_level: number
+  is_junk: boolean
+  star_rank: number | null
+  grade: string | null
+  type: string | null
+  set: string | null
+  main_stat: RawEquipmentStat[]
+  sub_stats: RawEquipmentStat[]
+  initial_substat_count: number | null
+  is_equipped: boolean
+}
+
+// Parsed & ready to use in stat calculator
+export interface ParsedEquipmentItem {
+  run_no: number
+  name: string
+  upgrade_level: number
+  set_name: string | null
+  type: string | null
+  slot_type: string
+  main_stats: {
+    stat_name: string
+    value: number
+    is_percent: boolean       // true = percent OF base (multiply)
+    is_flat_percent: boolean  // true = flat percentage point (add directly)
+    display: string
+  }[]
+  sub_stats: {
+    stat_name: string
+    value: number
+    is_percent: boolean
+    is_flat_percent: boolean
+    display: string
+  }[]
+}
+
+// Stats where a "%" suffix means flat addition (e.g. Crit Rate +4% = add 4 directly)
+export const FLAT_PERCENT_STATS = new Set([
+  'base_crit_rate',
+  'base_crit_damage',
+  'base_weakness',
+  'base_resistance',
+  'base_effective_hit_rate',
+  'base_block_rate',
+  'base_damage_taken_reduction',
+])
+
+// Stats where (%) in the JSON name means percent OF BASE (multiply)
+export const PERCENT_OF_BASE_STATS = new Set([
+  'all_attack',
+  'base_hp',
+  'base_defense',
+  'base_attack_physical',
+  'base_attack_magic',
+])
+
+// Stat name mapping from JSON names to internal keys
+export const STAT_NAME_MAP: Record<string, string> = {
+  'Crit Rate':              'base_crit_rate',
+  'Critical Rate':          'base_crit_rate',
+  'Crit Damage':            'base_crit_damage',
+  'Critical Damage':        'base_crit_damage',
+  'Speed':                  'base_speed',
+  'Physical Attack':        'base_attack_physical',
+  'Magic Attack':           'base_attack_magic',
+  'All Attack (%)':         'all_attack',
+  'All Attack':             'all_attack',
+  'Defense':                'base_defense',
+  'Defense (%)':            'base_defense',
+  'HP':                     'base_hp',
+  'HP (%)':                 'base_hp',
+  'Weakness Hit Chance':    'base_weakness',
+  'Effect Resistance':      'base_resistance',
+  'Resistance':             'base_resistance',
+  'Effective Hit Rate':     'base_effective_hit_rate',
+  'Damage Taken Reduction': 'base_damage_taken_reduction',
+  'Block Rate':             'base_block_rate',
+}
+
+// Infer slot_type from item type or name
+export function inferSlotType(item: RawEquipmentItem): 'weapon' | 'armor' | 'ring' | 'unknown' {
+  const name = item.name.toLowerCase()
+  const type = (item.type ?? '').toLowerCase()
+  if (type.includes('weapon') || name.includes('sword') || name.includes('blade') ||
+      name.includes('staff') || name.includes('bow') || name.includes('dagger')) {
+    return 'weapon'
+  }
+  if (type.includes('armor') || name.includes('armor') || name.includes('robe') ||
+      name.includes('plate') || name.includes('cloak')) {
+    return 'armor'
+  }
+  if (name.includes('ring') || name.includes('amulet') || name.includes('necklace')) {
+    return 'ring'
+  }
+  return 'unknown'
+}
+
+// Parse stat value string to number
+export function parseStatValue(value: string): { value: number; is_percent: boolean } {
+  const isPercent = value.includes('%')
+  const num = parseFloat(value.replace('%', '').trim())
+  return { value: isNaN(num) ? 0 : num, is_percent: isPercent }
+}
+
+// Convert RawEquipmentItem to ParsedEquipmentItem
+export function parseEquipmentItem(raw: RawEquipmentItem): ParsedEquipmentItem {
+  // Stats where % value means flat addition (e.g. Crit Rate 24% → add 24 directly)
+  const FLAT_ADD_STATS = new Set([
+    'base_crit_rate',
+    'base_crit_damage',
+    'base_weakness',
+    'base_resistance',
+    'base_effective_hit_rate',
+    'base_block_rate',
+    'base_damage_taken_reduction',
+  ])
+  // Stats where % value means multiply by base (e.g. HP(%) 28% → base_hp × 0.28)
+  const MULTIPLY_BASE_STATS = new Set([
+    'all_attack',
+    'base_hp',
+    'base_defense',
+    'base_attack_physical',
+    'base_attack_magic',
+  ])
+
+  const parseStats = (stats: RawEquipmentStat[]) =>
+    stats.map(s => {
+      const { value, is_percent } = parseStatValue(s.value)
+      const stat_name = STAT_NAME_MAP[s.name] ?? s.name
+
+      const isFlatAdd  = is_percent && FLAT_ADD_STATS.has(stat_name)
+      const isMultiply = is_percent && MULTIPLY_BASE_STATS.has(stat_name)
+
+      return {
+        stat_name,
+        value,
+        is_percent:      isMultiply,  // true = multiply by base
+        is_flat_percent: isFlatAdd,   // true = add directly as percentage points
+        display: s.value,
+      }
+    })
+
+  return {
+    run_no:        raw.run_no,
+    name:          raw.name,
+    upgrade_level: raw.upgrade_level,
+    set_name:      raw.set ?? null,
+    type:          raw.type,
+    slot_type:     inferSlotType(raw),
+    main_stats:    parseStats(raw.main_stat),
+    sub_stats:     parseStats(raw.sub_stats),
+  }
+}
+
+// ─── Gear Optimizer Types ─────────────────────────────────────────────────────
+
+export type ConstraintType =
+  | 'maximize'
+  | 'minimize'
+  | 'exactly'
+  | 'range'
+  | 'at_least'
+  | 'at_most'
+
+export interface StatTarget {
+  stat_key: string
+  label: string
+  constraint: ConstraintType
+  target_value?: number
+  min_value?: number
+  max_value?: number
+  preferred_value?: number
+  weight: number
+}
+
+export interface OptimizationResult {
+  slots: Record<EquipmentSlotType, ParsedEquipmentItem | null>
+  final_stats: Record<string, number>
+  score: number
+  meets_all_constraints: boolean
+  violations: string[]
+}
+
 // ─── Stat Calculator Types ────────────────────────────────────────────────────
 
 export interface FinalStats {

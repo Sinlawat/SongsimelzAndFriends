@@ -1064,29 +1064,71 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
     setIsSearching(true)
     setHasSearched(false)
 
-    // 1. Query matching defenses
+    // Build list of selected IDs (order-independent)
+    const selectedIds = [
+      selectedLeader.id,
+      selectedKnight2.id,
+      selectedKnight3 && selectedKnight3 !== 'ANY' ? (selectedKnight3 as Knight).id : null,
+    ].filter(Boolean) as string[]
+
+    // 1. Query defenses with joined knight data
     let defQuery = supabase
       .from('gvg_defenses')
-      .select('*')
-      .eq('leader_id', selectedLeader.id)
-      .eq('knight2_id', selectedKnight2.id)
+      .select(`
+        id, leader_id, knight2_id, knight3_id, leader_skill, created_at,
+        leader:knights!gvg_defenses_leader_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, knight_stats(*)),
+        knight2:knights!gvg_defenses_knight2_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, knight_stats(*)),
+        knight3:knights!gvg_defenses_knight3_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, knight_stats(*))
+      `)
 
-    if (selectedKnight3 !== null && selectedKnight3 !== 'ANY') {
-      defQuery = defQuery.eq('knight3_id', selectedKnight3.id)
+    // Each selected knight must appear in ANY slot
+    if (selectedIds.length >= 1) {
+      defQuery = defQuery.or(
+        `leader_id.eq.${selectedIds[0]},knight2_id.eq.${selectedIds[0]},knight3_id.eq.${selectedIds[0]}`
+      )
+    }
+    if (selectedIds.length >= 2) {
+      defQuery = defQuery.or(
+        `leader_id.eq.${selectedIds[1]},knight2_id.eq.${selectedIds[1]},knight3_id.eq.${selectedIds[1]}`
+      )
+    }
+    if (selectedIds.length >= 3) {
+      defQuery = defQuery.or(
+        `leader_id.eq.${selectedIds[2]},knight2_id.eq.${selectedIds[2]},knight3_id.eq.${selectedIds[2]}`
+      )
     }
 
-    const { data: rawDefenses, error: defError } = await defQuery
+    const { data: defenses, error } = await defQuery
 
-    if (defError || !rawDefenses || rawDefenses.length === 0) {
+    if (error || !defenses) {
       setSearchResults([])
       setHasSearched(true)
       setIsSearching(false)
       return
     }
 
-    // 2. Fetch counters for each defense in parallel
+    // Client-side strict filter: ALL selected knights must be present
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const strictFiltered = (defenses as any[]).filter(defense => {
+      const defenseKnightIds = [
+        defense.leader?.id,
+        defense.knight2?.id,
+        defense.knight3?.id,
+      ].filter(Boolean) as string[]
+      return selectedIds.every(id => defenseKnightIds.includes(id))
+    })
+
+    if (strictFiltered.length === 0) {
+      setSearchResults([])
+      setHasSearched(true)
+      setIsSearching(false)
+      return
+    }
+
+    // 2. Fetch counters for each matching defense
     const defenseWithCounters = await Promise.all(
-      rawDefenses.map(async defense => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      strictFiltered.map(async (defense: any) => {
         const { data: counters } = await supabase
           .from('gvg_counters')
           .select('*')
@@ -1096,35 +1138,29 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
       })
     )
 
-    // 3. Collect all knight IDs for a single batch fetch
-    const knightIds = new Set<string>()
-    defenseWithCounters.forEach(({ defense, counters }) => {
-      knightIds.add(defense.leader_id)
-      knightIds.add(defense.knight2_id)
-      if (defense.knight3_id) knightIds.add(defense.knight3_id)
+    // 3. Batch-fetch knight data for counter knights
+    const counterKnightIds = new Set<string>()
+    defenseWithCounters.forEach(({ counters }) => {
       counters.forEach((c: GVGCounter) => {
-        knightIds.add(c.leader_id)
-        knightIds.add(c.knight2_id)
-        if (c.knight3_id) knightIds.add(c.knight3_id)
+        counterKnightIds.add(c.leader_id)
+        counterKnightIds.add(c.knight2_id)
+        if (c.knight3_id) counterKnightIds.add(c.knight3_id)
       })
     })
 
-    const { data: knightRows } = await supabase
-      .from('knights')
-      .select('*, img_skill_1, img_skill_2')
-      .in('id', Array.from(knightIds))
-
     const km: Record<string, Knight> = {}
-    knightRows?.forEach((k: Knight) => { km[k.id] = k })
+    if (counterKnightIds.size > 0) {
+      const { data: knightRows } = await supabase
+        .from('knights')
+        .select('*, img_skill_1, img_skill_2')
+        .in('id', Array.from(counterKnightIds))
+      knightRows?.forEach((k: Knight) => { km[k.id] = k })
+    }
 
-    // 4. Assemble final results with joined knight data
-    const results: SearchResult[] = defenseWithCounters.map(({ defense, counters }) => ({
-      defense: {
-        ...defense,
-        leader:  km[defense.leader_id],
-        knight2: km[defense.knight2_id],
-        knight3: defense.knight3_id ? km[defense.knight3_id] : undefined,
-      } as GVGDefense,
+    // 4. Assemble final results
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results: SearchResult[] = defenseWithCounters.map(({ defense, counters }: { defense: any; counters: GVGCounter[] }) => ({
+      defense: defense as unknown as GVGDefense,
       counters: counters.map((c: GVGCounter) => ({
         ...c,
         leader:  km[c.leader_id],
