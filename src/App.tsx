@@ -36,10 +36,10 @@ export default function App() {
             ⚔️
           </div>
           <span className="font-black tracking-widest text-sm uppercase gold-shimmer hidden sm:block">
-            SongsimlelzAndFriends
+            SongsimelzAndFriends
           </span>
           <span className="font-black tracking-wider text-sm uppercase gold-shimmer sm:hidden">
-            SKR
+            SFG
           </span>
         </Link>
 
