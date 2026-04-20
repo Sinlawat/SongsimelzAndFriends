@@ -334,85 +334,73 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
       {/* ── Collapsed row (always visible) ───────────────────────────────────── */}
       <div
         onClick={() => setIsExpanded(prev => !prev)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 16px',
-          cursor: 'pointer',
-          background: isExpanded ? '#131d2e' : '#0f172a',
-          borderRadius: isExpanded ? '0' : '0',
-          transition: 'background 0.15s',
-        }}
+        className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-3 cursor-pointer transition-colors"
+        style={{ background: isExpanded ? '#131d2e' : '#0f172a' }}
         onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = '#111827' }}
         onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = '#0f172a' }}
       >
-        {/* Left: formation badge + knight avatars */}
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', minWidth: 0, flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {knightsInOrder.map((knight, i) => (
-              <KnightAvatar key={i} knight={knight} size={40} showName={false} />
-            ))}
+        {/* Knight avatars + pet */}
+        <div className="flex items-center gap-1 shrink-0">
+          {knightsInOrder.map((knight, i) => (
+            <div key={i} className="w-10 h-10 sm:w-12 sm:h-12 shrink-0">
+              <KnightAvatar knight={knight} size={40} showName={false} />
+            </div>
+          ))}
 
-            {/* Pet image — show if counter has pet */}
-            {counterPets[0] && (
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                overflow: 'hidden',
-                background: '#2d1b69',
-                border: '1.5px solid #a855f7',
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginLeft: '4px',
-              }}>
-                {counterPets[0].image_url ? (
-                  <img
-                    src={counterPets[0].image_url}
-                    alt={counterPets[0].name}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <span style={{ fontSize: '20px' }}>🐾</span>
-                )}
-              </div>
-            )}
-          </div>
-
+          {/* Pet image */}
+          {counterPets[0] && (
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              background: '#2d1b69',
+              border: '1.5px solid #a855f7',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: '4px',
+            }}>
+              {counterPets[0].image_url ? (
+                <img
+                  src={counterPets[0].image_url}
+                  alt={counterPets[0].name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <span style={{ fontSize: '20px' }}>🐾</span>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Right: username + computed rating + chevron */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '10px', color: '#6b7280', whiteSpace: 'nowrap' }}>
+        {/* User info + chevron */}
+        <div className="flex items-center justify-between sm:ml-auto gap-2 min-w-0">
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs truncate" style={{ color: '#6b7280', maxWidth: '160px' }}>
               {counter.submitted_by}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px', justifyContent: 'flex-end' }}>
+            </span>
+            <div className="flex items-center gap-0.5 mt-0.5">
               {[1, 2, 3, 4, 5].map(star => (
                 <span key={star} style={{ fontSize: '13px', color: star <= computedRating() ? '#f59e0b' : '#374151', transition: 'color 0.2s' }}>★</span>
               ))}
-              <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '2px' }}>
+              <span className="text-xs ml-1" style={{ color: '#6b7280' }}>
                 ({likeCount + dislikeCount})
               </span>
             </div>
           </div>
 
           {/* Expand/collapse chevron */}
-          <div style={{
-            width: '24px',
-            height: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            color: '#4b5563',
-            fontSize: '12px',
-            transition: 'transform 0.2s',
-            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-          }}>
+          <div
+            className="shrink-0 flex items-center justify-center w-6 h-6"
+            style={{
+              color: '#4b5563',
+              fontSize: '12px',
+              transition: 'transform 0.2s',
+              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            }}
+          >
             ▼
           </div>
         </div>
