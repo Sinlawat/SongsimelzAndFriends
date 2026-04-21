@@ -15,18 +15,12 @@ export default function FormationCard({ formation, isSelected, onClick }: Props)
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      className="w-full flex flex-col overflow-hidden rounded-[10px] cursor-pointer relative"
       style={{
-        width: '160px',
-        height: '120px',
         background: '#1f2937',
         border: `2px solid ${isSelected || hovered ? '#f59e0b' : '#374151'}`,
-        borderRadius: '10px',
-        cursor: 'pointer',
-        position: 'relative',
-        overflow: 'hidden',
         transition: 'border-color 0.15s, transform 0.15s',
         transform: hovered ? 'scale(1.03)' : 'scale(1)',
-        flexShrink: 0,
       }}
     >
       {/* ── Selected checkmark badge ─────────────────────────────────────── */}
@@ -52,38 +46,24 @@ export default function FormationCard({ formation, isSelected, onClick }: Props)
       )}
 
       {/* ── Formation diagram ────────────────────────────────────────────── */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '78px',
-        gap: '4px',
-        paddingTop: '6px',
-      }}>
+      <div className="flex flex-col items-center justify-center flex-1 gap-1 sm:gap-[4px] pt-2 sm:pt-[6px] pb-1">
         {/* BACK label */}
         <span style={{ fontSize: '8px', color: '#6b7280', letterSpacing: '0.05em', lineHeight: 1 }}>
           BACK
         </span>
 
         {/* Back row circles */}
-        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+        <div className="flex gap-1 sm:gap-[5px] items-center">
           {formation.backSlots.map(slot => (
             <div
               key={slot}
+              className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 rounded-full flex items-center justify-center"
               style={{
-                width: '18px',
-                height: '18px',
-                borderRadius: '50%',
                 background: '#374151',
                 border: '1px solid #4b5563',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 fontSize: '9px',
                 color: '#fff',
                 fontWeight: 'bold',
-                flexShrink: 0,
               }}
             >
               {slot}
@@ -92,23 +72,17 @@ export default function FormationCard({ formation, isSelected, onClick }: Props)
         </div>
 
         {/* Front row circles */}
-        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+        <div className="flex gap-1 sm:gap-[5px] items-center">
           {formation.frontSlots.map(slot => (
             <div
               key={slot}
+              className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 rounded-full flex items-center justify-center"
               style={{
-                width: '20px',
-                height: '20px',
-                borderRadius: '50%',
                 background: '#1e3a5f',
                 border: '1px solid #3b82f6',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 fontSize: '9px',
                 color: '#fff',
                 fontWeight: 'bold',
-                flexShrink: 0,
               }}
             >
               {slot}
@@ -123,33 +97,11 @@ export default function FormationCard({ formation, isSelected, onClick }: Props)
       </div>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
-      <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: 'rgba(0,0,0,0.70)',
-        padding: '4px 8px',
-      }}>
-        <p style={{
-          fontSize: '10px',
-          color: '#fff',
-          fontWeight: 'bold',
-          textAlign: 'center',
-          margin: 0,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
+      <div style={{ background: 'rgba(0,0,0,0.70)', padding: '4px 8px' }}>
+        <p className="text-[10px] sm:text-xs font-bold text-center truncate m-0" style={{ color: '#fff' }}>
           {formation.name}
         </p>
-        <p style={{
-          fontSize: '9px',
-          color: '#9ca3af',
-          textAlign: 'center',
-          margin: 0,
-          whiteSpace: 'nowrap',
-        }}>
+        <p className="text-[9px] sm:text-[10px] text-center m-0 truncate" style={{ color: '#9ca3af' }}>
           {formation.description}
         </p>
       </div>

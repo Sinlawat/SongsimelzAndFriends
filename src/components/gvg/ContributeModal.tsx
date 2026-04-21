@@ -182,6 +182,75 @@ function ModalFooter({ onBack, onBackLabel = '← Back', onNext, nextLabel, next
   )
 }
 
+// ─── Recommended entry type ───────────────────────────────────────────────────
+
+type RecommendedEntry = Partial<KnightStats> & {
+  weapon1?: string
+  weapon2?: string
+  armor1?: string
+  armor2?: string
+}
+
+// ─── Equipment select options ─────────────────────────────────────────────────
+
+const WEAPON_OPTIONS = [
+  { label: 'HP (%)',              value: 'hp_pct'       },
+  { label: 'Defense (%)',         value: 'def_pct'      },
+  { label: 'Crit Rate',           value: 'crit_rate'    },
+  { label: 'Crit Damage',         value: 'crit_dmg'     },
+  { label: 'Weakness Hit Chance', value: 'weakness'     },
+  { label: 'All Attack (%)',      value: 'atk_pct'      },
+  { label: 'Effect Hit Rate',     value: 'eff_hit_rate' },
+]
+
+const ARMOR_OPTIONS = [
+  { label: 'Damage Taken Reduction', value: 'dmg_reduction'  },
+  { label: 'Block Rate',             value: 'block_rate'     },
+  { label: 'All Attack (%)',         value: 'atk_pct'        },
+  { label: 'Defense (%)',            value: 'def_pct'        },
+  { label: 'HP (%)',                 value: 'hp_pct'         },
+  { label: 'Effect Resistance',      value: 'eff_resistance' },
+]
+
+function EquipmentSelect({ label, value, type, onChange }: {
+  label: string
+  value: string
+  type: 'weapon' | 'armor'
+  onChange: (v: string) => void
+}) {
+  const options = type === 'weapon' ? WEAPON_OPTIONS : ARMOR_OPTIONS
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      <span style={{ fontSize: '9px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          width: '100%',
+          background: '#1f2937',
+          border: '1px solid #374151',
+          borderRadius: '6px',
+          padding: '5px 8px',
+          color: value ? 'white' : '#4b5563',
+          fontSize: '11px',
+          outline: 'none',
+          cursor: 'pointer',
+          transition: 'border-color 0.15s',
+        }}
+        onFocus={e  => { e.currentTarget.style.borderColor = '#f59e0b' }}
+        onBlur={e   => { e.currentTarget.style.borderColor = '#374151' }}
+      >
+        <option value="">— เลือกไอเทม —</option>
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildSlots(formation: Formation): SlotAssignment[] {
@@ -222,7 +291,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
   } | null>(null)
 
   const [recommendedStats, setRecommendedStats] = useState<
-    Record<string, Partial<KnightStats>>
+    Record<string, RecommendedEntry>
   >({})
 
   const [selectedPet,  setSelectedPet]  = useState<Pet | null>(null)
@@ -317,14 +386,14 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
         skillQueues[s.knight!.id] = s.skillQueue
       })
 
-      const recStats: Record<string, Partial<KnightStats>> = {}
+      const recStats: Record<string, RecommendedEntry> = {}
       slots.filter(s => s.knight).forEach(s => {
         const filtered = Object.fromEntries(
           Object.entries(recommendedStats[s.knight!.id] ?? {})
-            .filter(([, v]) => v !== undefined && v !== null)
+            .filter(([, v]) => v !== undefined && v !== null && v !== '')
         )
         if (Object.keys(filtered).length > 0) {
-          recStats[s.knight!.id] = filtered as Partial<KnightStats>
+          recStats[s.knight!.id] = filtered as RecommendedEntry
         }
       })
 
@@ -419,6 +488,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
             position: 'relative',
             width: '90%',
             maxWidth: '660px',
+            maxHeight: 'calc(100dvh - 100px)',
             backgroundColor: '#111827',
             border: '2px solid #f59e0b',
             borderRadius: '12px',
@@ -480,16 +550,11 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
 
             {/* ════════════════ STEP 1: Formation ════════════════ */}
             {step === 1 && (
-              <div style={{ padding: '20px 24px' }}>
-                <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b', marginBottom: '16px' }}>
+              <div className="p-3 sm:p-6">
+                <p className="text-sm sm:text-base font-bold mb-2 sm:mb-4" style={{ color: '#f59e0b' }}>
                   เลือกรูปแบบการวาง
                 </p>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, 160px)',
-                  gap: '12px',
-                  justifyContent: 'center',
-                }}>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   {FORMATIONS.map(f => (
                     <FormationCard
                       key={f.id}
@@ -504,7 +569,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
 
             {/* ════════════════ STEP 2: Knights + Pets ════════════════ */}
             {step === 2 && (
-              <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="p-3 sm:p-6 flex flex-col gap-3 sm:gap-4">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b', margin: 0 }}>
                     วางฮีโร่ใน Formation
@@ -528,11 +593,11 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                   </div>
                 )}
 
-                {/* Side-by-side: formation board + pet panel */}
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+                {/* Formation board + pet — stacked on mobile, side-by-side on sm+ */}
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
 
-                  {/* LEFT: Formation board */}
-                  <div style={{ flex: '1 1 0', minWidth: 0 }}>
+                  {/* Formation board — full width on mobile */}
+                  <div className="flex-1 min-w-0 w-full">
                     <FormationBoard
                       formation={selectedFormation!}
                       slots={slots}
@@ -544,22 +609,21 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                     />
                   </div>
 
-                  {/* RIGHT: Single pet selection */}
-                  <div style={{ width: '140px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <p style={{ fontSize: '11px', fontWeight: 'bold', color: '#a855f7', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {/* Pet selection — inline row on mobile, column on sm+ */}
+                  <div className="flex flex-row sm:flex-col items-center sm:items-start gap-2 sm:w-36 sm:shrink-0">
+                    <p className="text-[11px] font-bold shrink-0 m-0" style={{ color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       🐾 สัตว์เลี้ยง
                     </p>
 
                     <button
                       onClick={() => setOpenPetModal(true)}
+                      className="w-14 h-14 sm:w-[110px] sm:h-[110px] rounded-lg relative overflow-hidden shrink-0"
                       style={{
-                        width: '110px', height: '110px', borderRadius: '8px',
                         border: selectedPet ? '2px solid #a855f7' : '1.5px dashed #374151',
                         background: selectedPet ? '#2d1b69' : '#1f2937',
                         cursor: 'pointer',
                         display: 'flex', flexDirection: 'column',
                         alignItems: 'center', justifyContent: 'center', gap: '4px',
-                        position: 'relative', overflow: 'hidden',
                         transition: 'all 0.15s', padding: 0,
                       }}
                       onMouseEnter={e => { if (!selectedPet) e.currentTarget.style.borderColor = '#a855f7' }}
@@ -571,7 +635,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                             <img
                               src={selectedPet.image_url}
                               alt={selectedPet.name}
-                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}
                               onError={e => { e.currentTarget.style.display = 'none' }}
                             />
                           ) : (
@@ -585,19 +649,22 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                               {selectedPet.name}
                             </span>
                           </div>
-                          <button
+                          <div
+                            role="button"
+                            tabIndex={0}
                             onClick={e => { e.stopPropagation(); setSelectedPet(null) }}
+                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setSelectedPet(null) } }}
                             style={{
                               position: 'absolute', top: '4px', right: '4px',
                               width: '16px', height: '16px', borderRadius: '50%',
-                              background: '#ef4444', border: 'none', color: 'white',
+                              background: '#ef4444', color: 'white',
                               fontSize: '10px', cursor: 'pointer',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              zIndex: 2, padding: 0,
+                              zIndex: 2,
                             }}
                           >
                             ✕
-                          </button>
+                          </div>
                         </>
                       ) : (
                         <>
@@ -690,6 +757,34 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                             <span style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: 'bold' }}>
                               {knight.name}
                             </span>
+                          </div>
+
+                          {/* Equipment selectors — 2×2 grid */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px', marginBottom: '10px' }}>
+                            <EquipmentSelect
+                              label="อาวุธ 1"
+                              value={recommendedStats[knight.id]?.weapon1 ?? ''}
+                              type="weapon"
+                              onChange={v => setRecommendedStats(prev => ({ ...prev, [knight.id]: { ...prev[knight.id], weapon1: v } }))}
+                            />
+                            <EquipmentSelect
+                              label="อาวุธ 2"
+                              value={recommendedStats[knight.id]?.weapon2 ?? ''}
+                              type="weapon"
+                              onChange={v => setRecommendedStats(prev => ({ ...prev, [knight.id]: { ...prev[knight.id], weapon2: v } }))}
+                            />
+                            <EquipmentSelect
+                              label="เกราะ 1"
+                              value={recommendedStats[knight.id]?.armor1 ?? ''}
+                              type="armor"
+                              onChange={v => setRecommendedStats(prev => ({ ...prev, [knight.id]: { ...prev[knight.id], armor1: v } }))}
+                            />
+                            <EquipmentSelect
+                              label="เกราะ 2"
+                              value={recommendedStats[knight.id]?.armor2 ?? ''}
+                              type="armor"
+                              onChange={v => setRecommendedStats(prev => ({ ...prev, [knight.id]: { ...prev[knight.id], armor2: v } }))}
+                            />
                           </div>
 
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>

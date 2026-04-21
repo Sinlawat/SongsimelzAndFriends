@@ -493,7 +493,7 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
                   const rec = counter.recommended_stats?.[knight!.id]
                   if (!rec || Object.keys(rec).length === 0) return null
 
-                  const LABELS: Record<string, string> = {
+                  const STAT_LABELS: Record<string, string> = {
                     base_hp:                     'HP',
                     base_attack_physical:        'ATK (Phy)',
                     base_attack_magic:           'ATK (Mag)',
@@ -507,39 +507,81 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
                     base_weakness:               'Weakness',
                     base_damage_taken_reduction: 'DMG Reduction',
                   }
+                  const EQUIP_LABELS: Record<string, string> = {
+                    hp_pct:        'HP (%)',
+                    def_pct:       'Defense (%)',
+                    crit_rate:     'Crit Rate',
+                    crit_dmg:      'Crit Damage',
+                    weakness:      'Weakness Hit Chance',
+                    atk_pct:       'All Attack (%)',
+                    eff_hit_rate:  'Effect Hit Rate',
+                    dmg_reduction: 'DMG Reduction',
+                    block_rate:    'Block Rate',
+                    eff_resistance:'Effect Resistance',
+                  }
+                  const EQUIP_SLOTS = [
+                    { key: 'weapon1', emoji: '⚔️' },
+                    { key: 'weapon2', emoji: '⚔️' },
+                    { key: 'armor1',  emoji: '🛡️' },
+                    { key: 'armor2',  emoji: '🛡️' },
+                  ] as const
                   const PERCENT_FIELDS = [
                     'base_crit_rate', 'base_crit_damage',
                     'base_resistance', 'base_effective_hit_rate',
                   ]
+
+                  const statEntries = Object.entries(rec).filter(
+                    ([k]) => !['weapon1','weapon2','armor1','armor2'].includes(k)
+                  )
+                  const equipPills = EQUIP_SLOTS.flatMap(({ key, emoji }) => {
+                    const val = (rec as Record<string, unknown>)[key]
+                    if (!val || typeof val !== 'string') return []
+                    const label = EQUIP_LABELS[val] ?? val
+                    return [{ key, emoji, label }]
+                  })
 
                   return (
                     <div key={knight!.id} style={{
                       background: '#0f172a', border: '1px solid #1e293b',
                       borderRadius: '8px', padding: '10px 12px', marginBottom: '8px',
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                      {/* Header: avatar + name + equipment pills */}
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
                         <KnightAvatar knight={knight!} size={24} showName={false} />
                         <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'bold' }}>
                           {knight!.name}
                         </span>
-                      </div>
-
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {Object.entries(rec).map(([key, val]) => (
-                          <div key={key} style={{
-                            background: '#111827', border: '1px solid #1e3a5f',
-                            borderRadius: '6px', padding: '4px 10px',
-                            display: 'flex', gap: '6px', alignItems: 'center',
+                        {equipPills.map(({ key, emoji, label }) => (
+                          <span key={key} style={{
+                            fontSize: '10px', color: '#cbd5e1',
+                            background: '#1e293b', border: '1px solid #334155',
+                            borderRadius: '4px', padding: '2px 7px',
+                            whiteSpace: 'nowrap',
                           }}>
-                            <span style={{ fontSize: '10px', color: '#6b7280' }}>
-                              {LABELS[key] ?? key}
-                            </span>
-                            <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 'bold' }}>
-                              {val}{PERCENT_FIELDS.includes(key) ? '%' : ''}
-                            </span>
-                          </div>
+                            {emoji} {label}
+                          </span>
                         ))}
                       </div>
+
+                      {/* Stat chips */}
+                      {statEntries.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {statEntries.map(([key, val]) => (
+                            <div key={key} style={{
+                              background: '#111827', border: '1px solid #1e3a5f',
+                              borderRadius: '6px', padding: '4px 10px',
+                              display: 'flex', gap: '6px', alignItems: 'center',
+                            }}>
+                              <span style={{ fontSize: '10px', color: '#6b7280' }}>
+                                {STAT_LABELS[key] ?? key}
+                              </span>
+                              <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 'bold' }}>
+                                {val}{PERCENT_FIELDS.includes(key) ? '%' : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}

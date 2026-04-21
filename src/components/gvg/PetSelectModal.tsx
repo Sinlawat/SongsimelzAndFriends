@@ -199,7 +199,7 @@ function PetCard({ pet, isSelected, onSelect }: {
           <img
             src={pet.image_url}
             alt={pet.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}
             onError={e => { e.currentTarget.style.display = 'none' }}
           />
         ) : (
