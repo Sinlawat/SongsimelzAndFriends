@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { SlotAssignment, SkillReservationData } from '../../types/index'
 import { ELEMENT_COLORS, ELEMENT_ICONS } from '../../types/index'
 
@@ -7,6 +7,7 @@ import { ELEMENT_COLORS, ELEMENT_ICONS } from '../../types/index'
 interface Props {
   slots: SlotAssignment[]
   onChange: (slotNumber: number, skillQueue: SkillReservationData[]) => void
+  initialQueues?: Record<number, SkillReservationData[]>
 }
 
 // ─── Reservation state ────────────────────────────────────────────────────────
@@ -34,19 +35,15 @@ function SkillCard({ imgUrl, label, reservation, totalReservations, onClick }: S
   const isFull      = !isReserved && totalReservations >= 3
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-      <span style={{ fontSize: '9px', color: '#9ca3af', letterSpacing: '0.02em' }}>{label}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '3px', width: '100%' }}>
+      <span style={{ fontSize: '9px', color: '#9ca3af', letterSpacing: '0.02em', textAlign: 'center' }}>{label}</span>
 
       <div
+        className="w-full aspect-square rounded-[10px] overflow-hidden relative shrink-0"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={onClick}
         style={{
-          width: '90px',
-          height: '90px',
-          borderRadius: '10px',
-          overflow: 'hidden',
-          position: 'relative',
           cursor: isFull ? 'not-allowed' : 'pointer',
           border: hovered && !isFull
             ? '2px solid #f59e0b'
@@ -57,7 +54,6 @@ function SkillCard({ imgUrl, label, reservation, totalReservations, onClick }: S
             : '2px dashed #374151',
           background: imgUrl ? '#0a0c14' : '#1f2937',
           transition: 'border-color 0.15s',
-          flexShrink: 0,
         }}
       >
         {/* Skill image */}
@@ -135,10 +131,29 @@ function SkillCard({ imgUrl, label, reservation, totalReservations, onClick }: S
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function SkillQueueStep({ slots, onChange }: Props) {
+export default function SkillQueueStep({ slots, onChange, initialQueues }: Props) {
   const [reservations, setReservations] = useState<SkillReservation[]>([])
+  const prevInitialQueuesRef = useRef<typeof initialQueues>(undefined)
 
   const assignedSlots = slots.filter(s => s.knight !== null)
+
+  // Pre-fill reservations when initialQueues is provided (edit mode)
+  useEffect(() => {
+    if (!initialQueues || initialQueues === prevInitialQueuesRef.current) return
+    prevInitialQueuesRef.current = initialQueues
+    const result: SkillReservation[] = []
+    Object.entries(initialQueues).forEach(([slotNumStr, queue]) => {
+      const slotNum = Number(slotNumStr)
+      queue.forEach(item => {
+        result.push({
+          knightSlotNumber: slotNum,
+          skillType: item.skillType as 'skill1' | 'skill2',
+          order: item.globalOrder as 1 | 2 | 3,
+        })
+      })
+    })
+    setReservations(result.sort((a, b) => a.order - b.order))
+  }, [initialQueues])
 
   // ── Sync reservations → parent onChange ──────────────────────────────────
   useEffect(() => {
@@ -222,13 +237,12 @@ export default function SkillQueueStep({ slots, onChange }: Props) {
       <div style={{
         background: '#1a1f35',
         borderRadius: '12px',
-        padding: '24px 16px',
+        padding: '16px 8px',
         display: 'flex',
         flexDirection: 'row',
         gap: '0',
         justifyContent: 'center',
         alignItems: 'flex-start',
-        overflowX: 'auto',
       }}>
         {assignedSlots.map((slot, idx) => {
           const knight = slot.knight!
@@ -241,37 +255,28 @@ export default function SkillQueueStep({ slots, onChange }: Props) {
             <div key={slot.slotNumber} style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
               {/* Connector between blocks */}
               {idx > 0 && (
-                <div style={{
-                  width: '24px',
-                  height: '2px',
-                  background: 'linear-gradient(to right, #374151, #f59e0b44, #374151)',
-                  flexShrink: 0,
-                  alignSelf: 'center',
-                  marginBottom: '8px',
-                }} />
+                <div
+                  className="w-2 sm:w-6 shrink-0 self-center"
+                  style={{
+                    height: '2px',
+                    background: 'linear-gradient(to right, #374151, #f59e0b44, #374151)',
+                    marginBottom: '8px',
+                  }}
+                />
               )}
 
               {/* Knight block */}
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px',
-                width: '120px',
-              }}>
+              <div className="w-[80px] sm:w-[120px] flex flex-col items-center gap-2">
 
                 {/* Portrait */}
-                <div style={{
-                  width: '100px',
-                  height: '100px',
-                  borderRadius: '50%',
-                  overflow: 'hidden',
-                  border: `3px solid ${color}`,
-                  boxShadow: `0 0 10px ${color}55`,
-                  position: 'relative',
-                  flexShrink: 0,
-                  background: knight.image_url ? '#0a0c14' : color + '33',
-                }}>
+                <div
+                  className="w-16 h-16 sm:w-24 sm:h-24 rounded-full overflow-hidden shrink-0 relative"
+                  style={{
+                    border: `3px solid ${color}`,
+                    boxShadow: `0 0 10px ${color}55`,
+                    background: knight.image_url ? '#0a0c14' : color + '33',
+                  }}
+                >
                   {knight.image_url ? (
                     <img
                       src={knight.image_url}
@@ -297,7 +302,7 @@ export default function SkillQueueStep({ slots, onChange }: Props) {
 
                 {/* Knight name + element */}
                 <div style={{ textAlign: 'center', lineHeight: 1.4 }}>
-                  <p style={{ fontSize: '11px', color: '#fff', margin: 0, fontWeight: 600, maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontSize: '11px', color: '#fff', margin: 0, fontWeight: 600, maxWidth: '76px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {knight.name}
                   </p>
                   <p style={{ fontSize: '10px', margin: 0, marginTop: '1px', lineHeight: 1 }}>

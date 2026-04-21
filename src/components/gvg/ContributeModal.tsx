@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabaseClient'
-import type { Formation, SlotAssignment, Knight, GVGCounter, Equipment, EquipmentSlotType, KnightStats, Pet } from '../../types/index'
+import type { Formation, SlotAssignment, Knight, GVGCounter, Equipment, EquipmentSlotType, KnightStats, Pet, SkillReservationData } from '../../types/index'
 import { FORMATIONS, EQUIPMENT_SLOTS } from '../../types/index'
 import { useAuth } from '../../contexts/AuthContext'
 import KnightAvatar from './KnightAvatar'
@@ -14,12 +14,27 @@ import PetSelectModal from './PetSelectModal'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+export interface ExistingCounterData {
+  id: string
+  defenseId: string
+  formation_id: number
+  slot_positions: Record<string, string>
+  skill_queues: Record<string, SkillReservationData[]>
+  recommended_stats: Record<string, RecommendedEntry>
+  pet_ids?: string[] | null
+  strategy?: string | null
+  knights: Knight[]
+}
+
 interface Props {
   isOpen: boolean
   onClose: () => void
   defenseId: string
   defenseTeam: { leader: Knight; knight2: Knight; knight3?: Knight }
   onSuccess: (newCounter: GVGCounter) => void
+  editMode?: boolean
+  initialData?: ExistingCounterData
+  onEditSuccess?: () => void
 }
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
@@ -271,7 +286,7 @@ function buildSlots(formation: Formation): SlotAssignment[] {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ContributeModal({ isOpen, onClose, defenseId, defenseTeam, onSuccess }: Props) {
+export default function ContributeModal({ isOpen, onClose, defenseId, defenseTeam, onSuccess, editMode = false, initialData, onEditSuccess }: Props) {
   const { user } = useAuth()
 
   const [step,               setStep]               = useState<1 | 2 | 3 | 4>(1)
@@ -297,6 +312,9 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
   const [selectedPet,  setSelectedPet]  = useState<Pet | null>(null)
   const [openPetModal, setOpenPetModal] = useState(false)
 
+  // Holds pre-built skill queues keyed by slot number, passed to SkillQueueStep
+  const initialSkillQueuesRef = useRef<Record<number, SkillReservationData[]> | undefined>(undefined)
+
   // Initialise equipment + recommendedStats map when a knight is placed into a slot
   useEffect(() => {
     slots.filter(s => s.knight).forEach(s => {
@@ -314,6 +332,49 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
       })
     })
   }, [slots])
+
+  // Pre-fill all state from initialData when opening in edit mode
+  useEffect(() => {
+    if (!isOpen || !editMode || !initialData) return
+
+    const formation = FORMATIONS.find(f => f.id === initialData.formation_id) ?? null
+    setSelectedFormation(formation)
+    setStep(1)
+    setError(null)
+    setStrategy(initialData.strategy ?? '')
+    setRecommendedStats((initialData.recommended_stats ?? {}) as Record<string, RecommendedEntry>)
+    setKnightEquipment({})
+    setOpenEquipSlot(null)
+
+    if (formation) {
+      const knightsById: Record<string, Knight> = {}
+      initialData.knights.forEach(k => { knightsById[k.id] = k })
+
+      const filledSlots = buildSlots(formation).map(slot => {
+        const knightId = initialData.slot_positions?.[String(slot.slotNumber)]
+        const knight = knightId ? (knightsById[knightId] ?? null) : null
+        const skillQueue = knight ? (initialData.skill_queues?.[knight.id] ?? []) : []
+        return { ...slot, knight, skillQueue }
+      })
+      setSlots(filledSlots)
+
+      // Build initialQueues for SkillQueueStep (slot number → skill queue)
+      const queues: Record<number, SkillReservationData[]> = {}
+      filledSlots.forEach(s => {
+        if (s.knight && s.skillQueue.length > 0) queues[s.slotNumber] = s.skillQueue
+      })
+      initialSkillQueuesRef.current = Object.keys(queues).length > 0 ? queues : undefined
+    }
+
+    // Fetch pet if present
+    if (initialData.pet_ids?.[0]) {
+      supabase.from('pets').select('*').eq('id', initialData.pet_ids[0]).single()
+        .then(({ data }) => { if (data) setSelectedPet(data as Pet) })
+    } else {
+      setSelectedPet(null)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editMode, initialData?.id])
 
   if (!isOpen) return null
 
@@ -333,6 +394,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
     setRecommendedStats({})
     setSelectedPet(null)
     setOpenPetModal(false)
+    initialSkillQueuesRef.current = undefined
     onClose()
   }
 
@@ -373,9 +435,6 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
     setError(null)
 
     try {
-      // ลองเช็ค Error
-      console.log('=== DEBUG insertData ===')
-
       const slotPositions: Record<string, string> = {}
       slots.filter(s => s.knight !== null).forEach(s => {
         slotPositions[String(s.slotNumber)] = s.knight!.id
@@ -397,6 +456,31 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
         }
       })
 
+      // ── EDIT MODE: UPDATE existing row ────────────────────────────────────
+      if (editMode && initialData?.id) {
+        const { error: updateError } = await supabase
+          .from('gvg_counters')
+          .update({
+            leader_id:         assignedSlots[0]?.knight?.id,
+            knight2_id:        assignedSlots[1]?.knight?.id,
+            knight3_id:        assignedSlots[2]?.knight?.id ?? null,
+            strategy:          strategy.trim() || null,
+            formation_id:      selectedFormation.id,
+            slot_positions:    slotPositions,
+            skill_queues:      skillQueues,
+            recommended_stats: Object.keys(recStats).length > 0 ? recStats : null,
+            pet_ids:           selectedPet ? [selectedPet.id] : null,
+          })
+          .eq('id', initialData.id)
+
+        if (updateError) throw updateError
+
+        onEditSuccess?.()
+        handleClose()
+        return
+      }
+
+      // ── NEW MODE: INSERT ──────────────────────────────────────────────────
       const insertData = {
         defense_id:        defenseId,
         leader_id:         assignedSlots[0]?.knight?.id,
@@ -410,8 +494,6 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
         recommended_stats: Object.keys(recStats).length > 0 ? recStats : null,
         pet_ids: selectedPet ? [selectedPet.id] : null,
       }
-      // ลองเพิ่มตรงนี้เช็ค error
-      console.log('=== DEBUG insertData ===', JSON.stringify(insertData, null, 2))
 
       const { data, error: insertError } = await supabase
         .from('gvg_counters')
@@ -419,11 +501,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
         .select()
         .single()
 
-      if (insertError) {
-        // ✅ เพิ่มตรงนี้
-        console.log('=== SUPABASE ERROR ===', JSON.stringify(insertError, null, 2))
-        throw insertError
-      }
+      if (insertError) throw insertError
 
       // Save equipment items for each knight
       const equipmentInserts: Record<string, unknown>[] = []
@@ -479,7 +557,6 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
           paddingTop: '72px',
           overflowY: 'auto',
         }}
-        onClick={e => { if (e.target === e.currentTarget) handleClose() }}
       >
         {/* ── Panel ─────────────────────────────────────────────────────────── */}
         <div
@@ -508,7 +585,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
             flexShrink: 0,
           }}>
             <h2 style={{ fontWeight: 'bold', fontSize: '15px', color: '#fff', margin: 0 }}>
-              ⚔️ Contribute Counter
+              {editMode ? '✏️ แก้ไข Counter' : '⚔️ Contribute Counter'}
             </h2>
             <button
               onClick={handleClose}
@@ -546,7 +623,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
           </div>
 
           {/* ── Scrollable body ─────────────────────────────────────────────── */}
-          <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={{ overflowY: 'auto', overflowX: 'hidden', flex: 1 }}>
 
             {/* ════════════════ STEP 1: Formation ════════════════ */}
             {step === 1 && (
@@ -680,7 +757,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
 
             {/* ════════════════ STEP 3: Skills ════════════════ */}
             {step === 3 && (
-              <div style={{ padding: '1rem 1.5rem' }}>
+              <div className="p-3 sm:p-6">
 
                 {/* ── Equipment section ──────────────────────────────────────── */}
                 <div style={{ marginBottom: '1.5rem' }}>
@@ -842,6 +919,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
 
                 <SkillQueueStep
                   slots={slots.filter(s => s.knight !== null)}
+                  initialQueues={initialSkillQueuesRef.current}
                   onChange={(slotNumber, skillQueue) => {
                     setSlots(prev => prev.map(s =>
                       s.slotNumber === slotNumber ? { ...s, skillQueue } : s
@@ -860,7 +938,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                     placeholder="อธิบายวิธีการ counter เช่น focus target ไหนก่อน, ลำดับการใช้สกิล..."
                     style={{
                       width: '100%',
-                      height: '90px',
+                      height: '64px',
                       background: '#1f2937',
                       border: '1px solid #374151',
                       borderRadius: '8px',
@@ -885,7 +963,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
                 {/* Header row: title + formation badge */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                   <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b', margin: 0 }}>
-                    ยืนยัน Counter
+                    {editMode ? 'กำลังแก้ไข Counter ที่มีอยู่' : 'ยืนยัน Counter'}
                   </p>
                   <span style={{
                     fontSize: '11px',
@@ -967,7 +1045,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
             <ModalFooter
               onBack={() => { setStep(3); setError(null) }}
               onNext={handleSubmit}
-              nextLabel="✓ Confirm & Submit"
+              nextLabel={editMode ? '💾 บันทึกการแก้ไข' : '✓ Confirm & Submit'}
               nextDisabled={isSubmitting}
               isSubmitting={isSubmitting}
               onCancel={handleClose}

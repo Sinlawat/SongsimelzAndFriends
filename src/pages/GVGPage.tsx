@@ -7,7 +7,7 @@ import KnightSelectModal from '../components/gvg/KnightSelectModal'
 import KnightAvatar from '../components/gvg/KnightAvatar'
 import FormationBoard from '../components/gvg/FormationBoard'
 import KnightEquipmentSlots from '../components/gvg/KnightEquipmentSlots'
-import ContributeModal from '../components/gvg/ContributeModal'
+import ContributeModal, { type ExistingCounterData } from '../components/gvg/ContributeModal'
 import { useAuth } from '../contexts/AuthContext'
 import { useAdmin } from '../hooks/useAdmin'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
@@ -103,12 +103,13 @@ function KnightSelectorButton({ label, knight, onClick, isAnyDefault }: Selector
 
 // ─── Counter Card ─────────────────────────────────────────────────────────────
 
-function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter }: {
+function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter, onEditCounter }: {
   counter: GVGCounter
   isNewest?: boolean
   onOpenLogin?: () => void
   isAdmin?: boolean
   onDeleteCounter?: (id: string, defenseId: string) => void
+  onEditCounter?: (counter: GVGCounter) => void
 }) {
   const { user } = useAuth()
   const [isExpanded,      setIsExpanded]      = useState(false)
@@ -640,6 +641,31 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter 
 
               {isAdmin && (
                 <button
+                  onClick={() => onEditCounter?.(counter)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    background: 'transparent',
+                    border: '1px solid #3b82f644',
+                    color: '#93c5fd',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = '#1e3a5f'
+                    e.currentTarget.style.borderColor = '#3b82f6'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.borderColor = '#3b82f644'
+                  }}
+                >
+                  ✏️ แก้ไข
+                </button>
+              )}
+              {isAdmin && (
+                <button
                   onClick={() => onDeleteCounter?.(counter.id, counter.defense_id)}
                   style={{
                     padding: '6px 12px',
@@ -789,9 +815,10 @@ interface DefenseGroupProps {
   isAdmin: boolean
   onDeleteDefense: (id: string) => void
   onDeleteCounter: (id: string, defenseId: string) => void
+  onEditCounter: (counter: GVGCounter) => void
 }
 
-function DefenseGroup({ result, onContribute, newestCounterId, onOpenLogin, isAdmin, onDeleteDefense, onDeleteCounter }: DefenseGroupProps) {
+function DefenseGroup({ result, onContribute, newestCounterId, onOpenLogin, isAdmin, onDeleteDefense, onDeleteCounter, onEditCounter }: DefenseGroupProps) {
   const { defense, counters } = result
 
   return (
@@ -892,6 +919,7 @@ function DefenseGroup({ result, onContribute, newestCounterId, onOpenLogin, isAd
             onOpenLogin={onOpenLogin}
             isAdmin={isAdmin}
             onDeleteCounter={onDeleteCounter}
+            onEditCounter={onEditCounter}
           />
         ))
       )}
@@ -921,6 +949,7 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
   const [showContributeModal, setShowContributeModal] = useState(false)
   const [contributeDefenseId, setContributeDefenseId] = useState<string | null>(null)
   const [newestCounterId,    setNewestCounterId]    = useState<string | null>(null)
+  const [editingCounter,     setEditingCounter]     = useState<ExistingCounterData | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{
     type: 'defense' | 'counter'
     id: string
@@ -1204,6 +1233,64 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
     setIsSearching(false)
   }
 
+  // ── Edit counter handler ────────────────────────────────────────────────────
+  function handleEditCounter(counter: GVGCounter) {
+    const knights = [counter.leader, counter.knight2, counter.knight3].filter(Boolean) as Knight[]
+    setEditingCounter({
+      id:                counter.id,
+      defenseId:         counter.defense_id,
+      formation_id:      counter.formation_id,
+      slot_positions:    counter.slot_positions ?? {},
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      skill_queues:      (counter.skill_queues ?? {}) as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recommended_stats: (counter.recommended_stats ?? {}) as any,
+      pet_ids:           counter.pet_ids?.filter((id): id is string => id !== null),
+      strategy:          counter.strategy,
+      knights,
+    })
+  }
+
+  // ── Refresh counters for a specific defense after an edit ────────────────────
+  async function refreshCountersForDefense(defenseId: string) {
+    const { data: counters } = await supabase
+      .from('gvg_counters')
+      .select('*')
+      .eq('defense_id', defenseId)
+      .order('rating', { ascending: false })
+
+    if (!counters) return
+
+    const knightIds = new Set<string>()
+    counters.forEach((c: GVGCounter) => {
+      knightIds.add(c.leader_id)
+      knightIds.add(c.knight2_id)
+      if (c.knight3_id) knightIds.add(c.knight3_id)
+    })
+
+    const { data: knightRows } = await supabase
+      .from('knights')
+      .select('*, img_skill_1, img_skill_2')
+      .in('id', Array.from(knightIds))
+
+    const km: Record<string, Knight> = {}
+    knightRows?.forEach((k: Knight) => { km[k.id] = k })
+
+    setSearchResults(prev => prev.map(g =>
+      g.defense.id === defenseId
+        ? {
+            ...g,
+            counters: counters.map((c: GVGCounter) => ({
+              ...c,
+              leader:  km[c.leader_id],
+              knight2: km[c.knight2_id],
+              knight3: c.knight3_id ? km[c.knight3_id] : undefined,
+            })),
+          }
+        : g
+    ))
+  }
+
   // ── Delete handler ─────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -1460,6 +1547,7 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
                     isAdmin={isAdmin}
                     onDeleteDefense={id => setDeleteTarget({ type: 'defense', id })}
                     onDeleteCounter={(id, defenseId) => setDeleteTarget({ type: 'counter', id, defenseId })}
+                    onEditCounter={handleEditCounter}
                   />
                 ))
               )}
@@ -1515,17 +1603,26 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
         </div>
       )}
 
-      {/* ── Contribute Modal ─────────────────────────────────────────────── */}
-      {showContributeModal && contributeDefenseId && (() => {
-        const def = searchResults.find(g => g.defense.id === contributeDefenseId)?.defense
-        if (!def) return null
+      {/* ── Contribute / Edit Modal ───────────────────────────────────────── */}
+      {(() => {
+        const isOpen = showContributeModal || editingCounter !== null
+        const defenseId = editingCounter?.defenseId ?? contributeDefenseId
+        const def = defenseId ? searchResults.find(g => g.defense.id === defenseId)?.defense : null
+        if (!isOpen || !def) return null
         return (
           <ContributeModal
-            isOpen={showContributeModal}
-            onClose={() => { setShowContributeModal(false); setContributeDefenseId(null) }}
-            defenseId={contributeDefenseId}
+            isOpen={isOpen}
+            onClose={() => { setShowContributeModal(false); setContributeDefenseId(null); setEditingCounter(null) }}
+            defenseId={def.id}
             defenseTeam={{ leader: def.leader, knight2: def.knight2, knight3: def.knight3 }}
             onSuccess={handleContributeSuccess}
+            editMode={editingCounter !== null}
+            initialData={editingCounter ?? undefined}
+            onEditSuccess={() => {
+              const dId = editingCounter?.defenseId
+              setEditingCounter(null)
+              if (dId) refreshCountersForDefense(dId)
+            }}
           />
         )
       })()}
