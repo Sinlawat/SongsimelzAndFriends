@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import type { Knight, GVGDefense, GVGCounter, SlotAssignment, Equipment, EquipmentSlotType, CounterKnightItem, Pet } from '../types/index'
@@ -125,6 +125,15 @@ function CounterCard({ counter, isNewest, onOpenLogin, isAdmin, onDeleteCounter,
   const [knightItems,     setKnightItems]     = useState<CounterKnightItem[]>([])
   const [itemsLoaded,     setItemsLoaded]     = useState(false)
   const [counterPets,     setCounterPets]     = useState<(Pet | null)[]>([])
+
+  // Reset equipment cache when the counter object is replaced (e.g. after an edit + re-fetch)
+  const prevCounterRef = useRef(counter)
+  useEffect(() => {
+    if (prevCounterRef.current === counter) return
+    prevCounterRef.current = counter
+    setItemsLoaded(false)
+    setKnightItems([])
+  }, [counter])
 
   useEffect(() => {
     const fetchFreshData = async () => {

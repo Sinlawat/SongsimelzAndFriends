@@ -327,7 +327,7 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
       })
       const knightId = s.knight!.id
       setRecommendedStats(prev => {
-        if (prev[knightId]) return prev
+        if (prev[knightId] !== undefined) return prev
         return { ...prev, [knightId]: {} }
       })
     })
@@ -365,6 +365,29 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
       })
       initialSkillQueuesRef.current = Object.keys(queues).length > 0 ? queues : undefined
     }
+
+    // Fetch equipment items for this counter and populate knightEquipment by slot number
+    const knightToSlot: Record<string, number> = {}
+    Object.entries(initialData.slot_positions ?? {}).forEach(([slotNum, knightId]) => {
+      knightToSlot[knightId] = Number(slotNum)
+    })
+    supabase
+      .from('counter_knight_items')
+      .select('*, equipment:equipment_id(*)')
+      .eq('counter_id', initialData.id)
+      .then(({ data: items }) => {
+        if (!items || items.length === 0) return
+        const equipMap: Record<number, Record<EquipmentSlotType, Equipment | null>> = {}
+        items.forEach((item: { knight_id: string; slot_type: string; equipment: Equipment | null }) => {
+          const slotNum = knightToSlot[item.knight_id]
+          if (slotNum === undefined) return
+          if (!equipMap[slotNum]) {
+            equipMap[slotNum] = { weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null }
+          }
+          equipMap[slotNum][item.slot_type as EquipmentSlotType] = item.equipment
+        })
+        setKnightEquipment(equipMap)
+      })
 
     // Fetch pet if present
     if (initialData.pet_ids?.[0]) {
@@ -407,7 +430,8 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
 
   // ── Slot interactions ─────────────────────────────────────────────────────
   function handleSlotClick(slotNumber: number) {
-    if (selectedKnightCount >= 3) return
+    const isOccupied = slots.find(s => s.slotNumber === slotNumber)?.knight !== null
+    if (!isOccupied && selectedKnightCount >= 3) return  // only block adding to a new empty slot when full
     setOpenSlotNumber(slotNumber)
   }
 
@@ -474,6 +498,27 @@ export default function ContributeModal({ isOpen, onClose, defenseId, defenseTea
           .eq('id', initialData.id)
 
         if (updateError) throw updateError
+
+        // Replace all equipment items for this counter
+        await supabase.from('counter_knight_items').delete().eq('counter_id', initialData.id)
+        const editEquipmentInserts: Record<string, unknown>[] = []
+        slots.filter(s => s.knight).forEach(slot => {
+          const eq = knightEquipment[slot.slotNumber]
+          if (!eq) return
+          EQUIPMENT_SLOTS.forEach(({ type }) => {
+            if (eq[type]) {
+              editEquipmentInserts.push({
+                counter_id:   initialData.id,
+                knight_id:    slot.knight!.id,
+                slot_type:    type,
+                equipment_id: eq[type]!.id,
+              })
+            }
+          })
+        })
+        if (editEquipmentInserts.length > 0) {
+          await supabase.from('counter_knight_items').insert(editEquipmentInserts)
+        }
 
         onEditSuccess?.()
         handleClose()

@@ -104,9 +104,9 @@ function SlotCell({ slot, onSlotClick, onSlotRemove, canAdd, readonly, showSkill
   let opacity = 1
 
   if (hasKnight) {
-    borderStyle = '2px solid #374151'
+    borderStyle = !readonly && hovered ? '2px solid #f59e0b' : '2px solid #374151'
     bgColor = '#1f2937'
-    cursor = 'default'
+    cursor = readonly ? 'default' : 'pointer'
   } else if (readonly) {
     borderStyle = '2px dashed #2d4a7a'
     bgColor = '#1a2744'
@@ -127,9 +127,9 @@ function SlotCell({ slot, onSlotClick, onSlotRemove, canAdd, readonly, showSkill
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
       {/* Slot button */}
       <div
-        onMouseEnter={() => !hasKnight && canAdd && !readonly && setHovered(true)}
+        onMouseEnter={() => !readonly && setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        onClick={() => !hasKnight && canAdd && !readonly && onSlotClick?.(slot.slotNumber)}
+        onClick={() => !readonly && (hasKnight || canAdd) && onSlotClick?.(slot.slotNumber)}
         style={{
           width: 'clamp(56px, 10vw, 80px)',
           height: 'clamp(56px, 10vw, 80px)',
