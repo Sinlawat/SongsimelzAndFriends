@@ -29,7 +29,7 @@ const SLOT_TYPE_COLOR: Record<string, { bg: string; color: string }> = {
   unknown: { bg: '#1f2937', color: '#6b7280' },
 }
 
-const STAT_DISPLAY: Record<string, string> = {
+export const STAT_DISPLAY: Record<string, string> = {
   base_hp:                     'HP',
   base_defense:                'Defense',
   base_attack_physical:        'ATK (Phy)',

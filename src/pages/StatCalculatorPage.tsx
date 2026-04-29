@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabaseClient'
 import {
   getSavedSets, saveSet, deleteSavedSet,
@@ -14,7 +15,7 @@ import EquipmentPickerModal from '../components/gvg/EquipmentPickerModal'
 import KnightSelectModal from '../components/gvg/KnightSelectModal'
 import KnightAvatar from '../components/gvg/KnightAvatar'
 import JsonUploader from '../components/JsonUploader'
-import ImportedEquipmentList from '../components/ImportedEquipmentList'
+import ImportedEquipmentList, { STAT_DISPLAY } from '../components/ImportedEquipmentList'
 import GearOptimizer from '../components/GearOptimizer'
 import MultiKnightOptimizer from '../components/MultiKnightOptimizer'
 import { calculateTranscendStats } from '../utils/transcendStats'
@@ -123,7 +124,10 @@ export default function StatCalculatorPage() {
   const [imagesLoading,         setImagesLoading]         = useState(false)
   const [selectedWeaponType,    setSelectedWeaponType]    = useState<'physical' | 'magic'>('physical')
 
-  const [savedSets, setSavedSets] = useState<SavedSet[]>([])
+  const [savedSets,        setSavedSets]        = useState<SavedSet[]>([])
+  const [hoveredBadgeKey,  setHoveredBadgeKey]  = useState<string | null>(null)
+  const [tooltipPos,       setTooltipPos]       = useState({ top: 0, left: 0 })
+  const [tooltipData,      setTooltipData]      = useState<{ run_no: number; set_name: string | null; mainStats: { name: string; value: string }[]; subStats: { name: string; value: string }[] } | null>(null)
 
   const savedSetsRef = useRef<HTMLDivElement>(null)
 
@@ -196,7 +200,9 @@ export default function StatCalculatorPage() {
         slot_type:         item.slot_type,
         name:              item.name,
         set_name:          item.set_name ?? null,
-        main_stat_display: item.main_stats.map(s => s.display).join(', '),
+        main_stat_display: item.main_stats.map(s => `${STAT_DISPLAY[s.stat_name] ?? s.stat_name}: ${s.display}`).join(', '),
+        main_stats: item.main_stats.map(s => ({ name: STAT_DISPLAY[s.stat_name] ?? s.stat_name, value: s.display })),
+        sub_stats:  item.sub_stats.map(s  => ({ name: STAT_DISPLAY[s.stat_name]  ?? s.stat_name,  value: s.display  })),
       }))
     const saved = await saveSet({
       knight_name:     selectedKnight.name,
@@ -718,16 +724,32 @@ export default function StatCalculatorPage() {
                     {/* Equipment items list */}
                     {(s.equipment_items?.length ?? 0) > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 14px 12px' }}>
-                        {(s.equipment_items ?? []).map((item, idx) => (
+                        {(s.equipment_items ?? []).map((item, idx) => {
+                          const badgeKey = `${s.id}-${item.run_no}`
+                          return (
                           <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {/* run_no badge */}
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                              minWidth: '28px', height: '20px',
-                              background: '#e94560', borderRadius: '5px',
-                              fontSize: '11px', fontWeight: 'bold', color: '#fff',
-                              padding: '0 4px', flexShrink: 0,
-                            }}>
+                            {/* run_no badge — tooltip rendered via portal */}
+                            <span
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                minWidth: '28px', height: '20px',
+                                background: '#e94560', borderRadius: '5px',
+                                fontSize: '11px', fontWeight: 'bold', color: '#fff',
+                                padding: '0 4px', cursor: 'default', flexShrink: 0,
+                              }}
+                              onMouseEnter={e => {
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                setTooltipPos({ top: rect.top - 8, left: rect.left })
+                                setTooltipData({
+                                  run_no:    item.run_no,
+                                  set_name:  item.set_name,
+                                  mainStats: item.main_stats ?? [],
+                                  subStats:  item.sub_stats  ?? [],
+                                })
+                                setHoveredBadgeKey(badgeKey)
+                              }}
+                              onMouseLeave={() => setHoveredBadgeKey(null)}
+                            >
                               {item.run_no}
                             </span>
                             {/* item name */}
@@ -744,7 +766,7 @@ export default function StatCalculatorPage() {
                               </span>
                             )}
                           </div>
-                        ))}
+                        )})}
                       </div>
                     ) : (
                       <p style={{ fontSize: '11px', color: '#374151', padding: '8px 14px 12px', margin: 0 }}>
@@ -808,6 +830,49 @@ export default function StatCalculatorPage() {
         onClose={() => setShowMultiOptimizer(false)}
         onSaveSuccess={fetchSavedSets}
       />
+
+      {/* Badge tooltip — portalled to body so it's never clipped */}
+      {hoveredBadgeKey && tooltipData && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: tooltipPos.top,
+          left: tooltipPos.left,
+          transform: 'translateY(-100%)',
+          zIndex: 9999,
+          width: '220px',
+          background: '#0f172a',
+          border: '1px solid #334155',
+          borderRadius: '8px',
+          padding: '10px 12px',
+          fontSize: '11px',
+          color: '#e2e8f0',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+          pointerEvents: 'none',
+          lineHeight: '1.6',
+        }}>
+          <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>#{tooltipData.run_no}</div>
+          {tooltipData.set_name && (
+            <div style={{ color: '#f59e0b', marginBottom: '6px' }}>Set: {tooltipData.set_name}</div>
+          )}
+          {tooltipData.mainStats.length > 0 && (
+            <>
+              <div style={{ color: '#94a3b8', marginBottom: '2px' }}>Main Stat:</div>
+              {tooltipData.mainStats.map((s, i) => (
+                <div key={i} style={{ paddingLeft: '8px' }}>• {s.name}: {s.value}</div>
+              ))}
+            </>
+          )}
+          {tooltipData.subStats.length > 0 && (
+            <>
+              <div style={{ color: '#94a3b8', marginTop: '4px', marginBottom: '2px' }}>Sub Stats:</div>
+              {tooltipData.subStats.map((s, i) => (
+                <div key={i} style={{ paddingLeft: '8px' }}>• {s.name}: {s.value}</div>
+              ))}
+            </>
+          )}
+        </div>,
+        document.body,
+      )}
     </>
   )
 }

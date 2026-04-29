@@ -2,12 +2,19 @@ import { supabase } from './supabaseClient'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface StatEntry {
+  name: string
+  value: string
+}
+
 export interface SavedSetItem {
   run_no: number
   slot_type: string
   name: string
   set_name: string | null
   main_stat_display: string
+  main_stats?: StatEntry[]
+  sub_stats?: StatEntry[]
 }
 
 export interface SavedSet {

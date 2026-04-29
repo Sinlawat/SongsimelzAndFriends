@@ -10,6 +10,7 @@ import { multiKnightOptimize } from '../utils/multiKnightOptimizer'
 import type { MultiKnightResult, KnightOptConfig } from '../utils/multiKnightOptimizer'
 import { saveSet } from '../lib/savedSets'
 import type { SavedSetItem } from '../lib/savedSets'
+import { STAT_DISPLAY } from './ImportedEquipmentList'
 import { useAuth } from '../contexts/AuthContext'
 import JsonUploader from './JsonUploader'
 import KnightSelectModal from './gvg/KnightSelectModal'
@@ -274,7 +275,9 @@ function KnightResultCard({ res, sourceFile, onSaveSuccess }: { res: MultiKnight
         slot_type:         item.slot_type,
         name:              item.name,
         set_name:          item.set_name ?? null,
-        main_stat_display: item.main_stats.map(s => s.display).join(', '),
+        main_stat_display: item.main_stats.map(s => `${STAT_DISPLAY[s.stat_name] ?? s.stat_name}: ${s.display}`).join(', '),
+        main_stats: item.main_stats.map(s => ({ name: STAT_DISPLAY[s.stat_name] ?? s.stat_name, value: s.display })),
+        sub_stats:  item.sub_stats.map(s  => ({ name: STAT_DISPLAY[s.stat_name]  ?? s.stat_name,  value: s.display  })),
       }))
     const saved = await saveSet({
       knight_name:     config.knight.name,
