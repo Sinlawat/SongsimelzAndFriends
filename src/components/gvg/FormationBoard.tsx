@@ -19,10 +19,9 @@ interface Props {
 
 function ReadonlySkillQueue({ skillQueue, knight }: { skillQueue: SkillReservationData[]; knight: Knight }) {
   if (skillQueue.length === 0) return null
-  // Sort by globalOrder so display matches actual queue order
   const sorted = [...skillQueue].sort((a, b) => a.globalOrder - b.globalOrder)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', width: '100%' }}>
+    <div className="flex flex-col gap-0.5 mt-1 w-full">
       {sorted.map((skill, i) => {
         const imgUrl = skill.skillType === 'skill1' ? knight.img_skill_1
                      : skill.skillType === 'skill2' ? knight.img_skill_2
@@ -32,48 +31,29 @@ function ReadonlySkillQueue({ skillQueue, knight }: { skillQueue: SkillReservati
         return (
           <div
             key={i}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 8px',
-              background: '#1e3a5f',
-              borderRadius: '6px',
-            }}
+            className="flex items-center gap-1 rounded px-1 py-0.5"
+            style={{ background: '#1e3a5f' }}
           >
-            {/* Global order badge */}
-            <div style={{
-              width: '20px',
-              height: '20px',
-              borderRadius: '50%',
-              background: '#f59e0b',
-              color: '#000',
-              fontSize: '11px',
-              fontWeight: 'bold',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}>
+            {/* Order badge */}
+            <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-black"
+                 style={{ background: '#f59e0b' }}>
               {skill.globalOrder}
             </div>
 
-            {/* Skill image */}
-            {imgUrl && (
+            {/* Skill image or icon */}
+            {imgUrl ? (
               <img
                 src={imgUrl}
                 alt={skill.skillType}
-                style={{ width: '24px', height: '24px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }}
+                className="w-4 h-4 rounded shrink-0"
+                style={{ objectFit: 'cover' }}
               />
-            )}
+            ) : meta ? (
+              <span className="text-xs leading-none shrink-0">{meta.icon}</span>
+            ) : null}
 
-            {/* Fallback icon */}
-            {!imgUrl && meta && (
-              <span style={{ fontSize: '14px', lineHeight: 1, flexShrink: 0 }}>{meta.icon}</span>
-            )}
-
-            <span style={{ fontSize: '11px', color: '#fff' }}>
-              สกิลจองลำดับที่ {skill.globalOrder}
+            <span className="text-[9px] text-white truncate">
+              {skill.globalOrder}
             </span>
           </div>
         )
@@ -97,7 +77,6 @@ function SlotCell({ slot, onSlotClick, onSlotRemove, canAdd, readonly, showSkill
   const [hovered, setHovered] = useState(false)
   const hasKnight = slot.knight !== null
 
-  // Determine slot button state
   let borderStyle: string
   let bgColor: string
   let cursor: string
@@ -124,33 +103,24 @@ function SlotCell({ slot, onSlotClick, onSlotRemove, canAdd, readonly, showSkill
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+    <div className="flex flex-col items-center gap-1 w-14 sm:w-16 shrink-0">
       {/* Slot button */}
       <div
         onMouseEnter={() => !readonly && setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={() => !readonly && (hasKnight || canAdd) && onSlotClick?.(slot.slotNumber)}
+        className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-[10px] overflow-hidden flex items-center justify-center shrink-0"
         style={{
-          width: 'clamp(56px, 10vw, 80px)',
-          height: 'clamp(56px, 10vw, 80px)',
-          borderRadius: '10px',
-          position: 'relative',
           background: bgColor,
           border: borderStyle,
           cursor,
           opacity,
           transition: 'border-color 0.15s',
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           boxShadow: !hasKnight && readonly ? 'inset 0 0 12px rgba(59,130,246,0.08)' : undefined,
-          flexShrink: 0,
         }}
       >
         {hasKnight ? (
           <>
-            {/* Knight portrait */}
             <KnightAvatar knight={slot.knight!} size={80} />
 
             {/* Name overlay */}
@@ -201,13 +171,13 @@ function SlotCell({ slot, onSlotClick, onSlotRemove, canAdd, readonly, showSkill
             )}
           </>
         ) : (
-          /* Empty slot content */
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <span style={{ fontSize: '22px', color: readonly ? '#4b6fa8' : '#374151', fontWeight: 'bold', lineHeight: 1 }}>
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-xl font-bold leading-none"
+                  style={{ color: readonly ? '#4b6fa8' : '#374151' }}>
               {slot.slotNumber}
             </span>
             {!readonly && canAdd && (
-              <span style={{ fontSize: '13px', color: '#4b5563', lineHeight: 1 }}>+</span>
+              <span className="text-sm leading-none" style={{ color: '#4b5563' }}>+</span>
             )}
           </div>
         )}
@@ -219,8 +189,10 @@ function SlotCell({ slot, onSlotClick, onSlotRemove, canAdd, readonly, showSkill
       )}
 
       {/* Slot label */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: !hasKnight && readonly ? 0.7 : 1 }}>
-        <span style={{ fontSize: '9px', color: !hasKnight && readonly ? '#374151' : '#6b7280' }}>Slot {slot.slotNumber}</span>
+      <div className="flex items-center gap-1" style={{ opacity: !hasKnight && readonly ? 0.7 : 1 }}>
+        <span style={{ fontSize: '9px', color: !hasKnight && readonly ? '#374151' : '#6b7280' }}>
+          Slot {slot.slotNumber}
+        </span>
         <span style={{
           fontSize: '8px',
           color: !hasKnight && readonly ? '#374151' : slot.row === 'front' ? '#3b82f6' : '#9ca3af',
@@ -263,21 +235,23 @@ export default function FormationBoard({
       alignItems: 'center',
     }}>
       {/* ── Back row ──────────────────────────────────────────────────────── */}
-      <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 'bold', letterSpacing: '0.08em' }}>
-        BACK
-      </span>
-      <div style={{ display: 'flex', gap: 'clamp(4px, 1vw, 10px)', justifyContent: 'center', flexWrap: 'wrap' }}>
-        {backSlots.map(slot => (
-          <SlotCell
-            key={slot.slotNumber}
-            slot={slot}
-            onSlotClick={onSlotClick}
-            onSlotRemove={onSlotRemove}
-            canAdd={canAdd}
-            readonly={readonly}
-            showSkills={showSkills}
-          />
-        ))}
+      <div className="w-full flex flex-col items-center gap-2">
+        <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 'bold', letterSpacing: '0.08em' }}>
+          BACK
+        </span>
+        <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
+          {backSlots.map(slot => (
+            <SlotCell
+              key={slot.slotNumber}
+              slot={slot}
+              onSlotClick={onSlotClick}
+              onSlotRemove={onSlotRemove}
+              canAdd={canAdd}
+              readonly={readonly}
+              showSkills={showSkills}
+            />
+          ))}
+        </div>
       </div>
 
       {/* ── Divider ───────────────────────────────────────────────────────── */}
@@ -288,21 +262,23 @@ export default function FormationBoard({
       }} />
 
       {/* ── Front row ─────────────────────────────────────────────────────── */}
-      <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 'bold', letterSpacing: '0.08em' }}>
-        FRONT
-      </span>
-      <div style={{ display: 'flex', gap: 'clamp(4px, 1vw, 10px)', justifyContent: 'center', flexWrap: 'wrap' }}>
-        {frontSlots.map(slot => (
-          <SlotCell
-            key={slot.slotNumber}
-            slot={slot}
-            onSlotClick={onSlotClick}
-            onSlotRemove={onSlotRemove}
-            canAdd={canAdd}
-            readonly={readonly}
-            showSkills={showSkills}
-          />
-        ))}
+      <div className="w-full flex flex-col items-center gap-2">
+        <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 'bold', letterSpacing: '0.08em' }}>
+          FRONT
+        </span>
+        <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
+          {frontSlots.map(slot => (
+            <SlotCell
+              key={slot.slotNumber}
+              slot={slot}
+              onSlotClick={onSlotClick}
+              onSlotRemove={onSlotRemove}
+              canAdd={canAdd}
+              readonly={readonly}
+              showSkills={showSkills}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )

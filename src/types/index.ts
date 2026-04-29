@@ -290,10 +290,12 @@ export const TRANSCEND_STAT_MAP: Record<string, string[]> = {
   hp:                     ['base_hp'],
   crit_rate:              ['base_crit_rate'],
   crit_damage:            ['base_crit_damage'],
+  crit_dam:               ['base_crit_damage'],       // DB alias for crit_damage
   resistance:             ['base_resistance'],
   effective_hit_rate:     ['base_effective_hit_rate'],
   block_rate:             ['base_block_rate'],
   weakness:               ['base_weakness'],
+  weakness_hit_chance:    ['base_weakness'],           // DB alias for weakness
   damage_taken_reduction: ['base_damage_taken_reduction'],
   speed:                  ['base_speed'],
 }

@@ -8,7 +8,7 @@ import type {
   Knight, KnightStats, Equipment, EquipmentSlotType,
   TranscendBonus, ParsedEquipmentItem,
 } from '../types/index'
-import { ELEMENT_ICONS, TRANSCEND_STAT_MAP, getKnightStats, FLAT_PERCENT_STATS, EQUIPMENT_SLOTS } from '../types/index'
+import { ELEMENT_ICONS, getKnightStats, FLAT_PERCENT_STATS, EQUIPMENT_SLOTS } from '../types/index'
 import KnightEquipmentSlots from '../components/gvg/KnightEquipmentSlots'
 import EquipmentPickerModal from '../components/gvg/EquipmentPickerModal'
 import KnightSelectModal from '../components/gvg/KnightSelectModal'
@@ -16,6 +16,8 @@ import KnightAvatar from '../components/gvg/KnightAvatar'
 import JsonUploader from '../components/JsonUploader'
 import ImportedEquipmentList from '../components/ImportedEquipmentList'
 import GearOptimizer from '../components/GearOptimizer'
+import MultiKnightOptimizer from '../components/MultiKnightOptimizer'
+import { calculateTranscendStats } from '../utils/transcendStats'
 import { useAuth } from '../contexts/AuthContext'
 
 // ─── Imported item bonus calculation ─────────────────────────────────────────
@@ -68,59 +70,6 @@ function calcImportedItemBonus(
   return bonus
 }
 
-// ─── Transcend calculation ────────────────────────────────────────────────────
-
-function calculateTranscendStats(
-  base: KnightStats,
-  transcendLevel: number,
-  knightTranscends: TranscendBonus[],
-  globalTranscends: TranscendBonus[],
-): KnightStats {
-  if (transcendLevel === 0) return base
-
-  const activeLevels = Array.from({ length: transcendLevel }, (_, i) => i + 1)
-  const allBonuses = [
-    ...knightTranscends.filter(t => activeLevels.includes(t.transcend_level)),
-    ...globalTranscends.filter(t => activeLevels.includes(t.transcend_level)),
-  ]
-
-  // Stats where a percent transcend bonus means flat addition, not multiply-base
-  const FLAT_ADD_TRANSCEND_STATS = new Set([
-    'base_crit_rate',
-    'base_crit_damage',
-    'base_weakness',
-    'base_resistance',
-    'base_effective_hit_rate',
-    'base_block_rate',
-    'base_damage_taken_reduction',
-  ])
-
-  const result = { ...base }
-
-  allBonuses.forEach(bonus => {
-    const fields = TRANSCEND_STAT_MAP[bonus.stat_name] ?? []
-    fields.forEach(field => {
-      const key    = field as keyof KnightStats
-      const baseVal = Number(base[key] ?? 0)
-      const cur    = Number((result as Record<string, unknown>)[key] ?? 0)
-
-      if (bonus.is_percent) {
-        if (FLAT_ADD_TRANSCEND_STATS.has(field)) {
-          // e.g. crit_rate 18% → add 18 directly
-          ;(result as Record<string, unknown>)[key] = cur + bonus.value
-        } else {
-          // e.g. hp 18% → base_hp × 0.18
-          ;(result as Record<string, unknown>)[key] = cur + baseVal * bonus.value / 100
-        }
-      } else {
-        ;(result as Record<string, unknown>)[key] = cur + bonus.value
-      }
-    })
-  })
-
-  return result
-}
-
 // ─── Stat row config ──────────────────────────────────────────────────────────
 
 type StatRowKey = keyof Omit<KnightStats, 'id' | 'knight_id'>
@@ -135,9 +84,9 @@ const STAT_ROWS_CONFIG: { label: string; key: StatRowKey; pct?: boolean }[] = [
   { label: 'CRIT DMG',        key: 'base_crit_damage',            pct: true },
   { label: 'Resistance',      key: 'base_resistance',             pct: true },
   { label: 'Eff. Hit Rate',   key: 'base_effective_hit_rate',     pct: true },
-  { label: 'Block Rate',      key: 'base_block_rate' },
-  { label: 'Weakness',        key: 'base_weakness' },
-  { label: 'DMG Reduction',   key: 'base_damage_taken_reduction' },
+  { label: 'Block Rate',      key: 'base_block_rate',             pct: true },
+  { label: 'Weakness',        key: 'base_weakness',               pct: true },
+  { label: 'DMG Reduction',   key: 'base_damage_taken_reduction', pct: true },
 ]
 
 
@@ -161,11 +110,13 @@ export default function StatCalculatorPage() {
   const [transcendLoaded,  setTranscendLoaded]  = useState(false)
 
   const [importedItems,         setImportedItems]         = useState<ParsedEquipmentItem[]>([])
+  const [uploadedFileName,      setUploadedFileName]      = useState<string | null>(null)
   const [showImported,          setShowImported]          = useState(false)
   const [assignedImportedItems, setAssignedImportedItems] = useState<Record<EquipmentSlotType, ParsedEquipmentItem | null>>({
     weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null,
   })
   const [showOptimizer,         setShowOptimizer]         = useState(false)
+  const [showMultiOptimizer,    setShowMultiOptimizer]    = useState(false)
   const [equipmentImages,       setEquipmentImages]       = useState<Record<EquipmentSlotType, string | null>>({
     weapon1: null, weapon2: null, armor1: null, armor2: null, ring: null,
   })
@@ -177,9 +128,8 @@ export default function StatCalculatorPage() {
   const savedSetsRef = useRef<HTMLDivElement>(null)
 
   // Load saved sets from Supabase on mount
-  useEffect(() => {
-    getSavedSets().then(sets => setSavedSets(sets))
-  }, [])
+  const fetchSavedSets = () => getSavedSets().then(sets => setSavedSets(sets))
+  useEffect(() => { fetchSavedSets() }, [])
 
   useEffect(() => {
     if (!selectedKnight) return
@@ -233,8 +183,6 @@ export default function StatCalculatorPage() {
     if (!user) { setLoginWarning(true); return }
     setLoginWarning(false)
     if (!selectedKnight) return
-    const now = new Date()
-    const timestamp = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
     const setNames = [
       ...Object.values(equippedItems).map(e => e?.set_name),
       ...Object.values(assignedImportedItems).map(i => i?.set_name),
@@ -252,10 +200,9 @@ export default function StatCalculatorPage() {
       }))
     const saved = await saveSet({
       knight_name:     selectedKnight.name,
-      transcend_level: transcendLevel,
-      equipment_sets:  uniqueSets,
+      set_name:        uniqueSets.join(', '),
+      source_file:     uploadedFileName,
       equipment_items,
-      timestamp,
     })
     if (saved) {
       setSavedSets(prev => [saved, ...prev])
@@ -609,6 +556,7 @@ export default function StatCalculatorPage() {
                       armor1:  null, armor2:  null, ring: null,
                     })
                   }}
+                  onFileName={setUploadedFileName}
                 />
 
                 {showImported && importedItems.length > 0 && (
@@ -672,6 +620,19 @@ export default function StatCalculatorPage() {
             </div>
           </div>
 
+          {/* ── Multi Knight Optimizer button ────────────────────────────────── */}
+          <div className="w-full max-w-2xl mt-4 flex justify-center">
+            <button
+              onClick={() => setShowMultiOptimizer(true)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200"
+              style={{ background: '#1e293b', color: '#f59e0b', border: '1.5px solid #f59e0b44' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#1e3a5f'; e.currentTarget.style.borderColor = '#f59e0b' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.borderColor = '#f59e0b44' }}
+            >
+              ⚔️ Multi Knight Optimizer
+            </button>
+          </div>
+
           {/* ── Saved sets panel ─────────────────────────────────────────────── */}
           <div ref={savedSetsRef} className="w-full max-w-2xl mt-8">
             {/* Panel header */}
@@ -723,22 +684,21 @@ export default function StatCalculatorPage() {
                       padding: '10px 14px',
                       borderBottom: '1px solid #1e293b',
                     }}>
-                      <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#e2e8f0', flex: 1, minWidth: 0,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {s.knight_name}
+                      <span style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {s.knight_name}
+                        </span>
+                        {s.source_file && (
+                          <span style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {s.source_file}
+                          </span>
+                        )}
                       </span>
-                      {s.transcend_level > 0 && (
-                        <span style={{
-                          fontSize: '10px', color: '#f59e0b',
-                          background: '#1c1a05', border: '1px solid #f59e0b44',
-                          borderRadius: '4px', padding: '1px 6px', flexShrink: 0,
-                        }}>
-                          T{s.transcend_level}
+                      {s.set_name && (
+                        <span style={{ fontSize: '9px', color: '#4b5563', flexShrink: 0 }}>
+                          {s.set_name}
                         </span>
                       )}
-                      <span style={{ fontSize: '9px', color: '#4b5563', flexShrink: 0 }}>
-                        {s.timestamp}
-                      </span>
                       <button
                         onClick={() => deleteSet(s.id)}
                         style={{
@@ -754,20 +714,6 @@ export default function StatCalculatorPage() {
                       </button>
                     </div>
 
-                    {/* Set badges */}
-                    {(s.equipment_sets?.length ?? 0) > 0 && (
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', padding: '8px 14px 0' }}>
-                        {(s.equipment_sets ?? []).map(name => (
-                          <span key={name} style={{
-                            fontSize: '9px', color: '#e94560',
-                            background: '#1e0a0e', border: '1px solid #e9456033',
-                            borderRadius: '20px', padding: '2px 8px', fontWeight: 'bold',
-                          }}>
-                            {name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
 
                     {/* Equipment items list */}
                     {(s.equipment_items?.length ?? 0) > 0 ? (
@@ -847,7 +793,7 @@ export default function StatCalculatorPage() {
           isOpen={showOptimizer}
           onClose={() => setShowOptimizer(false)}
           importedItems={importedItems}
-          baseStats={baseKnightStats}
+          baseStats={transcendedStats ?? baseKnightStats}
           onApply={(assigned, wt) => {
             setAssignedImportedItems(assigned)
             setSelectedWeaponType(wt)
@@ -855,6 +801,13 @@ export default function StatCalculatorPage() {
           }}
         />
       )}
+
+      {/* Multi Knight Optimizer modal */}
+      <MultiKnightOptimizer
+        isOpen={showMultiOptimizer}
+        onClose={() => setShowMultiOptimizer(false)}
+        onSaveSuccess={fetchSavedSets}
+      />
     </>
   )
 }

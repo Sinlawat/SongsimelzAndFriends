@@ -13,21 +13,19 @@ export interface SavedSetItem {
 export interface SavedSet {
   id: string
   knight_name: string
-  transcend_level: number
-  equipment_sets: string[]
+  set_name: string
+  source_file: string | null
   equipment_items: SavedSetItem[]
-  timestamp: string
 }
 
-// Row shape as stored in Supabase
+// Row shape as stored in Supabase (actual column names)
 interface DbRow {
   id: string
   user_id: string
   knight_name: string
-  transcend_level: number
-  equipment_sets: string[]
-  equipment_items: SavedSetItem[]
-  timestamp: string
+  set_name: string | null
+  source_file: string | null
+  equipment: SavedSetItem[]
   created_at: string
 }
 
@@ -35,10 +33,9 @@ function rowToSet(row: DbRow): SavedSet {
   return {
     id:              row.id,
     knight_name:     row.knight_name,
-    transcend_level: row.transcend_level,
-    equipment_sets:  row.equipment_sets  ?? [],
-    equipment_items: row.equipment_items ?? [],
-    timestamp:       row.timestamp,
+    set_name:        row.set_name ?? '',
+    source_file:     row.source_file ?? null,
+    equipment_items: row.equipment ?? [],
   }
 }
 
@@ -50,7 +47,7 @@ export async function getSavedSets(): Promise<SavedSet[]> {
 
   const { data, error } = await supabase
     .from('saved_sets')
-    .select('*')
+    .select('id, user_id, knight_name, set_name, source_file, equipment, created_at')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 
@@ -65,12 +62,11 @@ export async function saveSet(set: Omit<SavedSet, 'id'>): Promise<SavedSet | nul
   const { data, error } = await supabase
     .from('saved_sets')
     .insert({
-      user_id:         user.id,
-      knight_name:     set.knight_name,
-      transcend_level: set.transcend_level,
-      equipment_sets:  set.equipment_sets,
-      equipment_items: set.equipment_items,
-      timestamp:       set.timestamp,
+      user_id:     user.id,
+      knight_name: set.knight_name,
+      set_name:    set.set_name,
+      source_file: set.source_file,
+      equipment:   set.equipment_items,
     })
     .select()
     .single()

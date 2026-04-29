@@ -4,9 +4,10 @@ import { parseEquipmentItem } from '../types/index'
 
 interface Props {
   onImport: (items: ParsedEquipmentItem[]) => void
+  onFileName?: (name: string | null) => void
 }
 
-export default function JsonUploader({ onImport }: Props) {
+export default function JsonUploader({ onImport, onFileName }: Props) {
   const [isDragging,   setIsDragging]   = useState(false)
   const [error,        setError]        = useState<string | null>(null)
   const [fileName,     setFileName]     = useState<string | null>(null)
@@ -38,6 +39,7 @@ export default function JsonUploader({ onImport }: Props) {
       setFileName(file.name)
       setItemCount(parsed.length)
       setParsedItems(parsed)
+      onFileName?.(file.name)
     } catch {
       setError('ไม่สามารถอ่านไฟล์ได้ กรุณาตรวจสอบ format')
     }
@@ -49,6 +51,7 @@ export default function JsonUploader({ onImport }: Props) {
     setParsedItems([])
     setError(null)
     if (inputRef.current) inputRef.current.value = ''
+    onFileName?.(null)
   }
 
   const hasFile = fileName !== null && itemCount !== null

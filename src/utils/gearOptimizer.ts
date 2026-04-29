@@ -352,6 +352,7 @@ export function optimizeGear(
 
   // 5. Enumerate combinations (w1 × w2 × a1 × a2 × ring), keep top BEAM
   const results: OptimizationResult[] = []
+  const seen = new Set<string>()
 
   for (const w1 of weaponOptions) {
     for (const w2 of weaponOptions) {
@@ -360,6 +361,14 @@ export function optimizeGear(
         for (const a2 of armorOptions) {
           if (a1 && a2 && a1.run_no === a2.run_no) continue
           for (const r of ringOptions) {
+            // Canonical key: sort items within same-type slots so (A,B) === (B,A)
+            const wKey = [w1?.run_no ?? '_', w2?.run_no ?? '_'].sort().join(',')
+            const aKey = [a1?.run_no ?? '_', a2?.run_no ?? '_'].sort().join(',')
+            const rKey = String(r?.run_no ?? '_')
+            const comboKey = `w:${wKey}|a:${aKey}|r:${rKey}`
+            if (seen.has(comboKey)) continue
+            seen.add(comboKey)
+
             const slots: Record<EquipmentSlotType, ParsedEquipmentItem | null> = {
               weapon1: w1, weapon2: w2, armor1: a1, armor2: a2, ring: r,
             }
