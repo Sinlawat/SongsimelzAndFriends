@@ -219,6 +219,8 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
         image_url,
         img_skill_1,
         img_skill_2,
+        img_skill_3,
+        awake,
         knight_stats (
           base_hp,
           base_attack_physical,

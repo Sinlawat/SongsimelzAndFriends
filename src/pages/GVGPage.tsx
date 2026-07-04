@@ -1144,9 +1144,9 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
       .from('gvg_defenses')
       .select(`
         id, leader_id, knight2_id, knight3_id, leader_skill, created_at,
-        leader:knights!gvg_defenses_leader_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, knight_stats(*)),
-        knight2:knights!gvg_defenses_knight2_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, knight_stats(*)),
-        knight3:knights!gvg_defenses_knight3_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, knight_stats(*))
+        leader:knights!gvg_defenses_leader_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, img_skill_3, awake, knight_stats(*)),
+        knight2:knights!gvg_defenses_knight2_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, img_skill_3, awake, knight_stats(*)),
+        knight3:knights!gvg_defenses_knight3_id_fkey(id, name, element, image_url, img_skill_1, img_skill_2, img_skill_3, awake, knight_stats(*))
       `)
 
     // Each selected knight must appear in ANY slot

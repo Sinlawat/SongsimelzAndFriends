@@ -12,9 +12,11 @@ interface Props {
 
 // ─── Reservation state ────────────────────────────────────────────────────────
 
+type SkillType = 'skill1' | 'skill2' | 'skill3'
+
 interface SkillReservation {
   knightSlotNumber: number
-  skillType: 'skill1' | 'skill2'
+  skillType: SkillType
   order: 1 | 2 | 3
 }
 
@@ -26,17 +28,22 @@ interface SkillCardProps {
   reservation: SkillReservation | undefined
   totalReservations: number
   onClick: () => void
+  isAwake?: boolean
 }
 
-function SkillCard({ imgUrl, label, reservation, totalReservations, onClick }: SkillCardProps) {
+function SkillCard({ imgUrl, label, reservation, totalReservations, onClick, isAwake = false }: SkillCardProps) {
   const [hovered, setHovered] = useState(false)
 
   const isReserved  = reservation !== undefined
   const isFull      = !isReserved && totalReservations >= 3
 
+  const accent = isAwake ? '#a855f7' : '#f59e0b'
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '3px', width: '100%' }}>
-      <span style={{ fontSize: '9px', color: '#9ca3af', letterSpacing: '0.02em', textAlign: 'center' }}>{label}</span>
+      <span style={{ fontSize: '9px', color: isAwake ? '#c084fc' : '#9ca3af', letterSpacing: '0.02em', textAlign: 'center', fontWeight: isAwake ? 700 : 400 }}>
+        {isAwake ? '✦ ' : ''}{label}
+      </span>
 
       <div
         className="w-full aspect-square rounded-[10px] overflow-hidden relative shrink-0"
@@ -46,11 +53,11 @@ function SkillCard({ imgUrl, label, reservation, totalReservations, onClick }: S
         style={{
           cursor: isFull ? 'not-allowed' : 'pointer',
           border: hovered && !isFull
-            ? '2px solid #f59e0b'
+            ? `2px solid ${accent}`
             : isReserved
-            ? '2px solid #f59e0b88'
+            ? `2px solid ${accent}88`
             : imgUrl
-            ? '2px solid #1f2937'
+            ? (isAwake ? '2px solid #a855f744' : '2px solid #1f2937')
             : '2px dashed #374151',
           background: imgUrl ? '#0a0c14' : '#1f2937',
           transition: 'border-color 0.15s',
@@ -87,8 +94,8 @@ function SkillCard({ imgUrl, label, reservation, totalReservations, onClick }: S
             <div style={{
               width: '36px', height: '36px',
               borderRadius: '50%',
-              background: '#f59e0b',
-              color: '#000',
+              background: accent,
+              color: isAwake ? '#fff' : '#000',
               fontWeight: 'bold',
               fontSize: '18px',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -105,9 +112,9 @@ function SkillCard({ imgUrl, label, reservation, totalReservations, onClick }: S
         {!isReserved && !isFull && hovered && (
           <div style={{
             position: 'absolute', inset: 0,
-            background: 'rgba(245,158,11,0.18)',
+            background: isAwake ? 'rgba(168,85,247,0.18)' : 'rgba(245,158,11,0.18)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '13px', fontWeight: 'bold', color: '#f59e0b',
+            fontSize: '13px', fontWeight: 'bold', color: accent,
           }}>
             ＋ จอง
           </div>
@@ -147,7 +154,7 @@ export default function SkillQueueStep({ slots, onChange, initialQueues }: Props
       queue.forEach(item => {
         result.push({
           knightSlotNumber: slotNum,
-          skillType: item.skillType as 'skill1' | 'skill2',
+          skillType: item.skillType as SkillType,
           order: item.globalOrder as 1 | 2 | 3,
         })
       })
@@ -179,7 +186,7 @@ export default function SkillQueueStep({ slots, onChange, initialQueues }: Props
   }, [reservations])
 
   // ── Click handler ─────────────────────────────────────────────────────────
-  function handleSkillClick(slotNumber: number, skillType: 'skill1' | 'skill2') {
+  function handleSkillClick(slotNumber: number, skillType: SkillType) {
     const existing = reservations.find(
       r => r.knightSlotNumber === slotNumber && r.skillType === skillType
     )
@@ -250,6 +257,8 @@ export default function SkillQueueStep({ slots, onChange, initialQueues }: Props
 
           const res1 = reservations.find(r => r.knightSlotNumber === slot.slotNumber && r.skillType === 'skill1')
           const res2 = reservations.find(r => r.knightSlotNumber === slot.slotNumber && r.skillType === 'skill2')
+          const res3 = reservations.find(r => r.knightSlotNumber === slot.slotNumber && r.skillType === 'skill3')
+          const isAwakeKnight = knight.awake === true
 
           return (
             <div key={slot.slotNumber} style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
@@ -314,6 +323,18 @@ export default function SkillQueueStep({ slots, onChange, initialQueues }: Props
                   </p>
                 </div>
 
+                {/* Skill 3 (Awake) card — only for awakened knights */}
+                {isAwakeKnight && (
+                  <SkillCard
+                    imgUrl={knight.img_skill_3}
+                    label="Awake"
+                    reservation={res3}
+                    totalReservations={reservations.length}
+                    onClick={() => handleSkillClick(slot.slotNumber, 'skill3')}
+                    isAwake
+                  />
+                )}
+
                 {/* Skill 2 card */}
                 <SkillCard
                   imgUrl={knight.img_skill_2}
@@ -357,15 +378,17 @@ export default function SkillQueueStep({ slots, onChange, initialQueues }: Props
 
           if (res && slot?.knight) {
             const imgUrl = res.skillType === 'skill1' ? slot.knight.img_skill_1
-                         : slot.knight.img_skill_2
+                         : res.skillType === 'skill2' ? slot.knight.img_skill_2
+                         : slot.knight.img_skill_3
+            const isAwakeRes = res.skillType === 'skill3'
             return (
               <div key={order} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {/* Order circle */}
                 <div style={{
                   width: '20px', height: '20px',
                   borderRadius: '50%',
-                  background: '#f59e0b',
-                  color: '#000',
+                  background: isAwakeRes ? '#a855f7' : '#f59e0b',
+                  color: isAwakeRes ? '#fff' : '#000',
                   fontWeight: 'bold',
                   fontSize: '11px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',

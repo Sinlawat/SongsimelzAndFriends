@@ -25,18 +25,23 @@ function ReadonlySkillQueue({ skillQueue, knight }: { skillQueue: SkillReservati
       {sorted.map((skill, i) => {
         const imgUrl = skill.skillType === 'skill1' ? knight.img_skill_1
                      : skill.skillType === 'skill2' ? knight.img_skill_2
+                     : skill.skillType === 'skill3' ? knight.img_skill_3
                      : undefined
+        const isAwake = skill.skillType === 'skill3'
         const meta = SKILL_OPTIONS.find(o => o.id === skill.skillType)
 
         return (
           <div
             key={i}
             className="flex items-center gap-1 rounded px-1 py-0.5"
-            style={{ background: '#1e3a5f' }}
+            style={{
+              background: isAwake ? '#3b1e5f' : '#1e3a5f',
+              ...(isAwake ? { border: '1px solid #a855f766' } : {}),
+            }}
           >
             {/* Order badge */}
-            <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-black"
-                 style={{ background: '#f59e0b' }}>
+            <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold"
+                 style={{ background: isAwake ? '#a855f7' : '#f59e0b', color: isAwake ? '#fff' : '#000' }}>
               {skill.globalOrder}
             </div>
 

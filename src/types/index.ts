@@ -104,7 +104,19 @@ export interface Knight {
   image_url?: string
   img_skill_1?: string
   img_skill_2?: string
+  img_skill_3?: string
+  awake?: boolean
   knight_stats?: KnightStats | KnightStats[] | null
+}
+
+/** Resolve skill image URL from a skillType id ('skill1' | 'skill2' | 'skill3') */
+export function getSkillImage(knight: Knight, skillType: string): string | undefined {
+  switch (skillType) {
+    case 'skill1': return knight.img_skill_1
+    case 'skill2': return knight.img_skill_2
+    case 'skill3': return knight.img_skill_3
+    default:       return undefined
+  }
 }
 
 export function getKnightStats(knight: Knight): KnightStats | null {
