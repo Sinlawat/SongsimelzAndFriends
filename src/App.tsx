@@ -1,15 +1,41 @@
 import { useState } from 'react'
 import { Routes, Route, Link } from 'react-router-dom'
+import { useAuth } from './contexts/AuthContext'
 import UserButton from './components/UserButton'
 import HamburgerMenu from './components/HamburgerMenu'
 import LoginModal from './components/LoginModal'
 import HomePage from './pages/HomePage'
+import LoginPage from './pages/LoginPage'
 import StatCalculatorPage from './pages/StatCalculatorPage'
 import GVGPage from './pages/GVGPage'
 
 export default function App() {
   const [loginOpen, setLoginOpen] = useState(false)
+  const { user, loading } = useAuth()
 
+  // ── Auth gate ────────────────────────────────────────────────────────────
+  // 1) กำลังเช็ค session → แสดง splash กันหน้ากระพริบ
+  if (loading) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-3"
+        style={{ backgroundColor: '#0a0c14' }}
+      >
+        <span className="text-4xl">⚔️</span>
+        <span
+          className="inline-block w-5 h-5 rounded-full border-2 animate-spin"
+          style={{ borderColor: '#f59e0b33', borderTopColor: '#f59e0b' }}
+        />
+      </div>
+    )
+  }
+
+  // 2) ยังไม่ล็อกอิน → บังคับเข้าหน้า Login ก่อนเสมอ
+  if (!user) {
+    return <LoginPage />
+  }
+
+  // 3) ล็อกอินแล้ว → เข้าแอปตามปกติ
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#0a0c14', color: '#e2e8f0' }}>
 
