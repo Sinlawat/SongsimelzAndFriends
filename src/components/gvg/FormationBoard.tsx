@@ -19,7 +19,13 @@ interface Props {
 
 function ReadonlySkillQueue({ skillQueue, knight }: { skillQueue: SkillReservationData[]; knight: Knight }) {
   if (skillQueue.length === 0) return null
-  const sorted = [...skillQueue].sort((a, b) => a.globalOrder - b.globalOrder)
+  // Awake (skill3) always floats to the top; the rest keep globalOrder
+  const sorted = [...skillQueue].sort((a, b) => {
+    const aAwake = a.skillType === 'skill3' ? 0 : 1
+    const bAwake = b.skillType === 'skill3' ? 0 : 1
+    if (aAwake !== bAwake) return aAwake - bAwake
+    return a.globalOrder - b.globalOrder
+  })
   return (
     <div className="flex flex-col gap-0.5 mt-1 w-full">
       {sorted.map((skill, i) => {
