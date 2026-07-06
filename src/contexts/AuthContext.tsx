@@ -9,6 +9,8 @@ interface AuthContextValue {
   session: Session | null
   loading: boolean
   signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>
+  /** Login ด้วย username หรือ email ก็ได้ — คืน error message ภาษาไทย (null = สำเร็จ) */
+  signIn: (identifier: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<{ error: AuthError | null }>
 }
 
@@ -46,13 +48,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error }
   }
 
+  function translateAuthError(message: string): string {
+    if (message.includes('Invalid login credentials')) return 'ชื่อผู้ใช้/อีเมล หรือรหัสผ่านไม่ถูกต้อง'
+    if (message.includes('Email not confirmed'))       return 'กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ'
+    return message
+  }
+
+  /**
+   * Login ด้วย username หรือ email
+   * - มี '@' → ถือว่าเป็น email, login ตรง
+   * - ไม่มี '@' → เรียก RPC get_email_by_username หา email ก่อน แล้วค่อย login
+   */
+  async function signIn(identifier: string, password: string): Promise<{ error: string | null }> {
+    let email = identifier.trim()
+
+    if (!email.includes('@')) {
+      const { data, error: rpcError } = await supabase.rpc('get_email_by_username', {
+        p_username: email,
+      })
+      if (rpcError || !data) {
+        return { error: 'ไม่พบชื่อผู้ใช้นี้ในระบบ' }
+      }
+      email = data as string
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) return { error: translateAuthError(error.message) }
+    return { error: null }
+  }
+
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     return { error }
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signInWithEmail, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signInWithEmail, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )
