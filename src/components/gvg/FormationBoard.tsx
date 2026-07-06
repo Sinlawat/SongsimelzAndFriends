@@ -17,54 +17,78 @@ interface Props {
 
 // ─── Readonly skill queue display ─────────────────────────────────────────────
 
+/** ป้ายชื่อสกิลภาษาไทย: skill1 = ล่าง, skill2 = บน, skill3 = อเวค */
+const SKILL_THAI_LABEL: Record<string, string> = {
+  skill1: 'สกิลล่าง',
+  skill2: 'สกิลบน',
+  skill3: 'สกิลอเวค',
+}
+
 function ReadonlySkillQueue({ skillQueue, knight }: { skillQueue: SkillReservationData[]; knight: Knight }) {
-  if (skillQueue.length === 0) return null
-  // Awake (skill3) always floats to the top; the rest keep globalOrder
-  const sorted = [...skillQueue].sort((a, b) => {
-    const aAwake = a.skillType === 'skill3' ? 0 : 1
-    const bAwake = b.skillType === 'skill3' ? 0 : 1
-    if (aAwake !== bAwake) return aAwake - bAwake
-    return a.globalOrder - b.globalOrder
-  })
+  // แสดงสกิลทั้งหมดของอัศวินเสมอ — เรียงบน→ล่าง: awake, skill2, skill1
+  const allSkills: string[] = []
+  if (knight.awake || knight.img_skill_3) allSkills.push('skill3')
+  allSkills.push('skill2', 'skill1')
+
+  // map การจองจริง: skillType → globalOrder
+  const reservedOrder = new Map(skillQueue.map(s => [s.skillType, s.globalOrder]))
+
   return (
-    <div className="flex flex-col gap-0.5 mt-1 w-full">
-      {sorted.map((skill, i) => {
-        const imgUrl = skill.skillType === 'skill1' ? knight.img_skill_1
-                     : skill.skillType === 'skill2' ? knight.img_skill_2
-                     : skill.skillType === 'skill3' ? knight.img_skill_3
+    <div className="flex flex-col gap-0.5 mt-1 w-[4.5rem] shrink-0">
+      {allSkills.map(skillType => {
+        const imgUrl = skillType === 'skill1' ? knight.img_skill_1
+                     : skillType === 'skill2' ? knight.img_skill_2
+                     : skillType === 'skill3' ? knight.img_skill_3
                      : undefined
-        const isAwake = skill.skillType === 'skill3'
-        const meta = SKILL_OPTIONS.find(o => o.id === skill.skillType)
+        const isAwake = skillType === 'skill3'
+        const order = reservedOrder.get(skillType)
+        const isReserved = order !== undefined
+        const meta = SKILL_OPTIONS.find(o => o.id === skillType)
 
         return (
           <div
-            key={i}
+            key={skillType}
             className="flex items-center gap-1 rounded px-1 py-0.5"
             style={{
-              background: isAwake ? '#3b1e5f' : '#1e3a5f',
-              ...(isAwake ? { border: '1px solid #a855f766' } : {}),
+              background: isReserved
+                ? (isAwake ? '#3b1e5f' : '#1e3a5f')
+                : (isAwake ? '#2a1a3f' : '#16233f'),
+              border: isAwake
+                ? `1px solid ${isReserved ? '#a855f766' : '#a855f722'}`
+                : '1px solid transparent',
+              opacity: isReserved ? 1 : 0.55,
             }}
           >
-            {/* Order badge */}
-            <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold"
-                 style={{ background: isAwake ? '#a855f7' : '#f59e0b', color: isAwake ? '#fff' : '#000' }}>
-              {skill.globalOrder}
-            </div>
+            {/* Order badge — เฉพาะสกิลที่จองไว้ (รูปแบบเดิม) */}
+            {isReserved ? (
+              <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
+                   style={{ background: isAwake ? '#a855f7' : '#f59e0b', color: isAwake ? '#fff' : '#000' }}>
+                {order}
+              </div>
+            ) : (
+              <div className="w-3.5 h-3.5 rounded-full shrink-0"
+                   style={{ border: '1px dashed #4b5563' }} />
+            )}
 
             {/* Skill image or icon */}
             {imgUrl ? (
               <img
                 src={imgUrl}
-                alt={skill.skillType}
-                className="w-4 h-4 rounded shrink-0"
+                alt={skillType}
+                className="w-3.5 h-3.5 rounded shrink-0"
                 style={{ objectFit: 'cover' }}
               />
             ) : meta ? (
-              <span className="text-xs leading-none shrink-0">{meta.icon}</span>
+              <span className="text-[10px] leading-none shrink-0">{meta.icon}</span>
             ) : null}
 
-            <span className="text-[9px] text-white truncate">
-              {skill.globalOrder}
+            {/* ชื่อสกิลภาษาไทย */}
+            <span
+              className="text-[8px] leading-none whitespace-nowrap"
+              style={{ color: isAwake ? '#d8b4fe' : '#e2e8f0' }}
+              title={SKILL_THAI_LABEL[skillType]}
+            >
+              {SKILL_THAI_LABEL[skillType]}
             </span>
           </div>
         )
