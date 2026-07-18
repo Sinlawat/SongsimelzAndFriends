@@ -109,6 +109,29 @@ function KnightCard({ knight, onClick }: KnightCardProps) {
         </div>
       )}
 
+      {/* Awake badge — top-right corner */}
+      {knight.awake === true && (
+        <div style={{
+          position: 'absolute',
+          top: '4px',
+          right: '4px',
+          width: '18px',
+          height: '18px',
+          borderRadius: '50%',
+          background: '#a855f7',
+          border: '1px solid #c084fc',
+          boxShadow: '0 0 6px rgba(168,85,247,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '10px',
+          color: '#fff',
+          lineHeight: 1,
+        }}>
+          ✦
+        </div>
+      )}
+
       {/* Name overlay — gradient bar at bottom */}
       <div style={{
         position: 'absolute',
@@ -199,6 +222,7 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
   const [search, setSearch]         = useState('')
   const [elementFilter, setElementFilter] = useState<ElementFilter>('all')
   const [gradeFilters, setGradeFilters] = useState<Grade[]>([])
+  const [awakeOnly, setAwakeOnly]       = useState(false)
 
   const overlayRef = useRef<HTMLDivElement>(null)
   const searchRef  = useRef<HTMLInputElement>(null)
@@ -259,6 +283,7 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
       setSearch('')
       setElementFilter('all')
       setGradeFilters([])
+      setAwakeOnly(false)
       setTimeout(() => searchRef.current?.focus(), 80)
     }
   }, [isOpen])
@@ -284,15 +309,20 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
       .filter(k => {
         const matchElement = elementFilter === 'all' || k.element === elementFilter
         const matchGrade   = gradeFilters.length === 0 || gradeFilters.includes(k.grade as Grade)
+        const matchAwake   = !awakeOnly || k.awake === true
         const matchSearch  = k.name.toLowerCase().includes(search.toLowerCase())
-        return matchElement && matchGrade && matchSearch
+        return matchElement && matchGrade && matchAwake && matchSearch
       })
       .sort((a, b) => {
+        // 1) Awake knights float to the top
+        const awakeDiff = (a.awake === true ? 0 : 1) - (b.awake === true ? 0 : 1)
+        if (awakeDiff !== 0) return awakeDiff
+        // 2) Then the original ordering: grade → name
         const gradeDiff = (GRADE_SORT[a.grade ?? 'white'] ?? 99) - (GRADE_SORT[b.grade ?? 'white'] ?? 99)
         if (gradeDiff !== 0) return gradeDiff
         return a.name.localeCompare(b.name)
       })
-  }, [knights, elementFilter, gradeFilters, search])
+  }, [knights, elementFilter, gradeFilters, awakeOnly, search])
 
   function handleSelect(knight: Knight) {
     onSelect(knight)
@@ -430,6 +460,26 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
           borderBottom: '1px solid #1e293b',
         }}>
           <span style={{ fontSize: '11px', color: '#6b7280', marginRight: '2px' }}>Grade:</span>
+
+          {/* Awake filter chip — purple theme */}
+          <button
+            onClick={() => setAwakeOnly(prev => !prev)}
+            style={{
+              padding: '3px 12px',
+              borderRadius: '99px',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              border: awakeOnly ? '1.5px solid #a855f7' : '1.5px solid #374151',
+              background: awakeOnly ? '#3b1e5f' : 'transparent',
+              color: awakeOnly ? '#c084fc' : '#6b7280',
+              boxShadow: awakeOnly ? '0 0 8px rgba(168,85,247,0.4)' : 'none',
+              transition: 'all 0.15s',
+            }}
+          >
+            ✦ Awake
+          </button>
+
           {gradeFilters.length > 0 && (
             <span style={{ fontSize: '10px', color: '#f59e0b', marginRight: '2px' }}>
               ({gradeFilters.length} selected)
@@ -459,9 +509,9 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
             )
           })}
 
-          {gradeFilters.length > 0 && (
+          {(gradeFilters.length > 0 || awakeOnly) && (
             <button
-              onClick={() => setGradeFilters([])}
+              onClick={() => { setGradeFilters([]); setAwakeOnly(false) }}
               style={{
                 background: 'none',
                 border: 'none',
@@ -517,9 +567,9 @@ export default function KnightSelectModal({ isOpen, onClose, onSelect, title, al
           <span className="text-xs text-gray-600">
             {filtered.length} / {knights.length} knights
           </span>
-          {(elementFilter !== 'all' || gradeFilters.length > 0 || search) && (
+          {(elementFilter !== 'all' || gradeFilters.length > 0 || awakeOnly || search) && (
             <button
-              onClick={() => { setElementFilter('all'); setGradeFilters([]); setSearch('') }}
+              onClick={() => { setElementFilter('all'); setGradeFilters([]); setAwakeOnly(false); setSearch('') }}
               className="text-xs font-semibold transition-colors"
               style={{ color: '#4b5563' }}
               onMouseEnter={e => { e.currentTarget.style.color = '#f59e0b' }}

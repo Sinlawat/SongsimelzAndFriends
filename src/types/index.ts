@@ -527,3 +527,32 @@ export interface FinalStats {
     crit_damage: number
   }
 }
+
+// ─── GVG Defense Team Types (V1.3) ────────────────────────────────────────────
+
+export type TeamType = 'tank' | 'magic' | 'physical' | 'hybrid' | 'death' | 'other'
+
+export const TEAM_TYPES: TeamType[] = ['tank', 'magic', 'physical', 'hybrid', 'death', 'other']
+
+export const TEAM_TYPE_LABELS: Record<TeamType, string> = {
+  tank:     'ทีมถึก',
+  magic:    'ทีมเวท',
+  physical: 'ทีมกาย',
+  hybrid:   'ทีมผสม',
+  death:    'ทีมเดธ',
+  other:    'ทีมอื่นๆ',
+}
+
+export const TEAM_TYPE_COLORS: Record<TeamType, string> = {
+  tank:     '#3b82f6',
+  magic:    '#a855f7',
+  physical: '#ef4444',
+  hybrid:   '#22c55e',
+  death:    '#ec4899',
+  other:    '#9ca3af',
+}
+
+/** null/undefined ในฐานข้อมูล = ยังไม่แท็ก → แสดงเป็น "ทีมอื่นๆ" */
+export function normalizeTeamType(value: string | null | undefined): TeamType {
+  return TEAM_TYPES.includes(value as TeamType) ? (value as TeamType) : 'other'
+}

@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
-import type { Knight, GVGDefense, GVGCounter, SlotAssignment, Equipment, EquipmentSlotType, CounterKnightItem, Pet } from '../types/index'
+import type { Knight, GVGDefense, GVGCounter, SlotAssignment, Equipment, EquipmentSlotType, CounterKnightItem, Pet, TeamType } from '../types/index'
 import { ELEMENT_COLORS, ELEMENT_ICONS, FORMATIONS } from '../types/index'
 import KnightSelectModal from '../components/gvg/KnightSelectModal'
 import KnightAvatar from '../components/gvg/KnightAvatar'
 import FormationBoard from '../components/gvg/FormationBoard'
 import KnightEquipmentSlots from '../components/gvg/KnightEquipmentSlots'
 import ContributeModal, { type ExistingCounterData } from '../components/gvg/ContributeModal'
+import TeamTypeSelectModal from '../components/gvg/TeamTypeSelectModal'
 import { useAuth } from '../contexts/AuthContext'
 import { useAdmin } from '../hooks/useAdmin'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
@@ -956,6 +957,7 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
   const [hasSearched,     setHasSearched]     = useState(false)
   const [showLoginWarning,   setShowLoginWarning]   = useState(false)
   const [showContributeModal, setShowContributeModal] = useState(false)
+  const [showTeamTypeModal, setShowTeamTypeModal] = useState(false)
   const [contributeDefenseId, setContributeDefenseId] = useState<string | null>(null)
   const [newestCounterId,    setNewestCounterId]    = useState<string | null>(null)
   const [editingCounter,     setEditingCounter]     = useState<ExistingCounterData | null>(null)
@@ -1076,7 +1078,7 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
     setTimeout(() => setNewestCounterId(null), 3000)
   }
 
-  async function handleContributeForNewDefense() {
+  async function handleContributeForNewDefense(teamType: TeamType) {
     if (!selectedLeader || !selectedKnight2) return
 
     const { data, error } = await supabase
@@ -1089,6 +1091,7 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
           : null,
         leader_skill: null,
         submitted_by: null,
+        team_type: teamType,
       })
       .select()
       .single()
@@ -1494,7 +1497,8 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
                         setTimeout(() => setShowLoginWarning(false), 3000)
                         return
                       }
-                      handleContributeForNewDefense()
+                      // เลือกประเภททีมก่อน แล้วค่อยสร้าง defense (V1.3)
+                      setShowTeamTypeModal(true)
                     }}
                     style={{
                       background: '#f59e0b',
@@ -1613,6 +1617,16 @@ export default function GVGPage({ onOpenLogin }: GVGPageProps) {
       )}
 
       {/* ── Contribute / Edit Modal ───────────────────────────────────────── */}
+      {/* ── Team Type Modal (V1.3) — เลือกประเภททีมก่อนสร้าง defense ใหม่ ── */}
+      <TeamTypeSelectModal
+        isOpen={showTeamTypeModal}
+        onClose={() => setShowTeamTypeModal(false)}
+        onSelect={teamType => {
+          setShowTeamTypeModal(false)
+          handleContributeForNewDefense(teamType)
+        }}
+      />
+
       {(() => {
         const isOpen = showContributeModal || editingCounter !== null
         const defenseId = editingCounter?.defenseId ?? contributeDefenseId

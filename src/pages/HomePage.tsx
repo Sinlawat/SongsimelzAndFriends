@@ -1,21 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import KnightAvatar from '../components/gvg/KnightAvatar'
 import { useAdmin } from '../hooks/useAdmin'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import type { TeamType } from '../types/index'
+import { TEAM_TYPES, TEAM_TYPE_LABELS, TEAM_TYPE_COLORS, normalizeTeamType } from '../types/index'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DefenseRow {
   id: string
   leader_skill?: string
+  team_type?: string | null
   created_at: string
   leader:  { id: string; name: string; element: string; image_url?: string }
   knight2: { id: string; name: string; element: string; image_url?: string }
   knight3?: { id: string; name: string; element: string; image_url?: string } | null
   counter_count: number
 }
+
+type TypeFilter = TeamType | 'all'
 
 // ─── Skeleton card ────────────────────────────────────────────────────────────
 
@@ -40,6 +45,7 @@ export default function HomePage() {
   const [defenses,        setDefenses]        = useState<DefenseRow[]>([])
   const [loading,         setLoading]         = useState(true)
   const [deleteDefenseId, setDeleteDefenseId] = useState<string | null>(null)
+  const [typeFilter,      setTypeFilter]      = useState<TypeFilter>('all')
 
   useEffect(() => {
     const fetchDefenses = async () => {
@@ -48,6 +54,7 @@ export default function HomePage() {
         .select(`
           id,
           leader_skill,
+          team_type,
           created_at,
           leader:knights!gvg_defenses_leader_id_fkey(id, name, element, image_url),
           knight2:knights!gvg_defenses_knight2_id_fkey(id, name, element, image_url),
@@ -58,6 +65,7 @@ export default function HomePage() {
 
       if (data) {
         const withCounts = await Promise.all(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data.map(async (def: any) => {
             const { count } = await supabase
               .from('gvg_counters')
@@ -86,6 +94,26 @@ export default function HomePage() {
     setDeleteDefenseId(null)
   }
 
+  // Admin: เปลี่ยน team_type ผ่าน RPC (security definer เช็ค is_admin ฝั่ง DB)
+  async function handleSetTeamType(defenseId: string, teamType: TeamType) {
+    const { error } = await supabase.rpc('set_defense_team_type', {
+      p_defense_id: defenseId,
+      p_team_type:  teamType,
+    })
+    if (!error) {
+      setDefenses(prev => prev.map(d =>
+        d.id === defenseId ? { ...d, team_type: teamType } : d
+      ))
+    } else {
+      console.error('Error setting team type:', error)
+    }
+  }
+
+  // Client-side filter — null/ค่าที่ไม่รู้จัก ถูก normalize เป็น 'other'
+  const filteredDefenses = typeFilter === 'all'
+    ? defenses
+    : defenses.filter(d => normalizeTeamType(d.team_type) === typeFilter)
+
   return (
     <div style={{ backgroundColor: '#0a0c14', minHeight: '100vh', padding: '2rem 1.5rem' }}>
       {/* Shimmer keyframes */}
@@ -97,7 +125,7 @@ export default function HomePage() {
       `}</style>
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+      <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '8px' }}>
           <div style={{ height: '1px', width: '48px', background: 'linear-gradient(to right, transparent, #f59e0b)' }} />
           <span style={{ fontSize: '12px', color: '#f59e0b', letterSpacing: '0.15em', fontWeight: 600 }}>
@@ -113,6 +141,55 @@ export default function HomePage() {
         </p>
       </div>
 
+      {/* ── Team type filter chips (V1.3) ─────────────────────────────────── */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: '8px',
+        justifyContent: 'center', marginBottom: '1.5rem',
+      }}>
+        {/* ALL chip */}
+        <button
+          onClick={() => setTypeFilter('all')}
+          style={{
+            padding: '5px 16px',
+            borderRadius: '99px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            border: `1.5px solid ${typeFilter === 'all' ? '#f59e0b' : '#374151'}`,
+            background: typeFilter === 'all' ? '#f59e0b20' : 'transparent',
+            color: typeFilter === 'all' ? '#f59e0b' : '#6b7280',
+            transition: 'all 0.15s',
+          }}
+        >
+          ทั้งหมด
+        </button>
+
+        {TEAM_TYPES.map(type => {
+          const active = typeFilter === type
+          const color  = TEAM_TYPE_COLORS[type]
+          return (
+            <button
+              key={type}
+              onClick={() => setTypeFilter(active ? 'all' : type)}
+              style={{
+                padding: '5px 16px',
+                borderRadius: '99px',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                border: `1.5px solid ${active ? color : '#374151'}`,
+                background: active ? `${color}20` : 'transparent',
+                color: active ? color : '#6b7280',
+                boxShadow: active ? `0 0 10px ${color}40` : 'none',
+                transition: 'all 0.15s',
+              }}
+            >
+              {TEAM_TYPE_LABELS[type]}
+            </button>
+          )
+        })}
+      </div>
+
       {/* ── Grid ──────────────────────────────────────────────────────────── */}
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {loading ? (
@@ -120,7 +197,7 @@ export default function HomePage() {
             {Array.from({ length: 20 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : defenses.length === 0 ? (
-          /* ── Empty state ──────────────────────────────────────────────── */
+          /* ── Empty state (ไม่มีข้อมูลเลย) ─────────────────────────────── */
           <div style={{
             textAlign: 'center', padding: '64px 24px',
             background: '#111827', borderRadius: '16px',
@@ -134,9 +211,21 @@ export default function HomePage() {
               เป็นคนแรกที่เพิ่มทีม Counter ในหน้า GVG
             </p>
           </div>
+        ) : filteredDefenses.length === 0 ? (
+          /* ── Empty state (filter แล้วไม่เจอ) ──────────────────────────── */
+          <div style={{
+            textAlign: 'center', padding: '48px 24px',
+            background: '#111827', borderRadius: '16px',
+            border: '1px solid #1e293b', maxWidth: '400px', margin: '0 auto',
+          }}>
+            <div style={{ fontSize: '36px', marginBottom: '12px' }}>🔍</div>
+            <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
+              ไม่มีทีมประเภท "{typeFilter !== 'all' ? TEAM_TYPE_LABELS[typeFilter] : ''}" ใน Top 20
+            </p>
+          </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-            {defenses.map((defense, index) => (
+            {filteredDefenses.map((defense, index) => (
               <DefenseCard
                 key={defense.id}
                 defense={defense}
@@ -144,6 +233,7 @@ export default function HomePage() {
                 onClick={() => navigate('/gvg?defense_id=' + defense.id)}
                 isAdmin={isAdmin}
                 onDelete={() => setDeleteDefenseId(defense.id)}
+                onSetTeamType={handleSetTeamType}
               />
             ))}
           </div>
@@ -161,14 +251,116 @@ export default function HomePage() {
   )
 }
 
+// ─── Team type badge (+ admin dropdown) ──────────────────────────────────────
+
+function TeamTypeBadge({ defenseId, teamType, isAdmin, onSetTeamType }: {
+  defenseId: string
+  teamType: TeamType
+  isAdmin?: boolean
+  onSetTeamType?: (defenseId: string, teamType: TeamType) => void
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const color = TEAM_TYPE_COLORS[teamType]
+
+  // ปิด dropdown เมื่อคลิกนอกพื้นที่
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [menuOpen])
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={e => {
+          e.stopPropagation()               // กันไม่ให้ card navigate
+          if (isAdmin) setMenuOpen(prev => !prev)
+        }}
+        title={isAdmin ? 'คลิกเพื่อเปลี่ยนประเภททีม' : undefined}
+        style={{
+          padding: '2px 10px',
+          borderRadius: '99px',
+          fontSize: '10px',
+          fontWeight: 'bold',
+          border: `1px solid ${color}66`,
+          background: `${color}18`,
+          color,
+          cursor: isAdmin ? 'pointer' : 'default',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+        }}
+      >
+        {TEAM_TYPE_LABELS[teamType]}
+        {isAdmin && <span style={{ fontSize: '8px' }}>▾</span>}
+      </button>
+
+      {/* Admin dropdown */}
+      {isAdmin && menuOpen && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 4px)',
+          left: 0,
+          zIndex: 20,
+          background: '#1f2937',
+          border: '1px solid #374151',
+          borderRadius: '8px',
+          padding: '4px',
+          minWidth: '110px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        }}>
+          {TEAM_TYPES.map(type => {
+            const optColor = TEAM_TYPE_COLORS[type]
+            const isCurrent = type === teamType
+            return (
+              <button
+                key={type}
+                onClick={e => {
+                  e.stopPropagation()
+                  setMenuOpen(false)
+                  if (!isCurrent) onSetTeamType?.(defenseId, type)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: isCurrent ? 'bold' : 'normal',
+                  border: 'none',
+                  background: isCurrent ? `${optColor}20` : 'transparent',
+                  color: optColor,
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = `${optColor}25` }}
+                onMouseLeave={e => { e.currentTarget.style.background = isCurrent ? `${optColor}20` : 'transparent' }}
+              >
+                {isCurrent ? '✓ ' : ''}{TEAM_TYPE_LABELS[type]}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Defense card ─────────────────────────────────────────────────────────────
 
-function DefenseCard({ defense, index, onClick, isAdmin, onDelete }: {
+function DefenseCard({ defense, index, onClick, isAdmin, onDelete, onSetTeamType }: {
   defense: DefenseRow
   index: number
   onClick: () => void
   isAdmin?: boolean
   onDelete?: () => void
+  onSetTeamType?: (defenseId: string, teamType: TeamType) => void
 }) {
   const [hovered, setHovered] = useState(false)
 
@@ -217,8 +409,9 @@ function DefenseCard({ defense, index, onClick, isAdmin, onDelete }: {
           🗑️
         </button>
       )}
-      {/* Top row: rank badge + counter count */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+
+      {/* Top row: rank badge + team type + counter count */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         <div style={{
           width: '28px', height: '28px', borderRadius: '8px',
           background: index < 3 ? '#f59e0b' : '#1f2937',
@@ -230,6 +423,14 @@ function DefenseCard({ defense, index, onClick, isAdmin, onDelete }: {
           {index + 1}
         </div>
 
+        {/* Team type badge (V1.3) */}
+        <TeamTypeBadge
+          defenseId={defense.id}
+          teamType={normalizeTeamType(defense.team_type)}
+          isAdmin={isAdmin}
+          onSetTeamType={onSetTeamType}
+        />
+
         <span style={{
           fontSize: '11px',
           background: '#0f172a',
@@ -237,6 +438,8 @@ function DefenseCard({ defense, index, onClick, isAdmin, onDelete }: {
           borderRadius: '6px',
           padding: '2px 8px',
           color: '#6b7280',
+          marginLeft: 'auto',
+          marginRight: isAdmin ? '32px' : '0',   // เว้นที่ให้ปุ่มลบของ admin
         }}>
           {defense.counter_count} counter{defense.counter_count !== 1 ? 's' : ''}
         </span>
@@ -244,9 +447,12 @@ function DefenseCard({ defense, index, onClick, isAdmin, onDelete }: {
 
       {/* Knight avatars */}
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'center', margin: '12px 0' }}>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         <KnightAvatar knight={defense.leader  as any} size={64} showName />
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         <KnightAvatar knight={defense.knight2 as any} size={64} showName />
         {defense.knight3 && (
+          /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
           <KnightAvatar knight={defense.knight3 as any} size={64} showName />
         )}
       </div>
