@@ -5,6 +5,49 @@
 
 ---
 
+## [1.4.0] - 2026-07-18
+
+### Added
+- **หน้า Home แสดงทีมทั้งหมด** (จากเดิมแค่ 20 ทีม) — โหลดครั้งละ 20 ทีม พร้อมปุ่ม
+  **"โหลดเพิ่ม (เหลือ N ทีม)"** และตัวนับ "แสดง X / Y ทีม"
+- **SQL migration** (`supabase_migration_v1.4_defense_pagination.sql`)
+  - RPC `get_defenses_page(p_limit, p_offset, p_team_type)` — เรียง, กรอง, นับ counter
+    และคืน total_count ในขั้นตอนเดียวฝั่ง DB
+
+### Changed
+- **การเรียงถูกต้องขึ้น** — เดิมดึง 20 ทีม*ล่าสุด*แล้วค่อยเรียง counter ฝั่ง client
+  (ทีมเก่าที่ counter เยอะไม่ติดลิสต์) ตอนนี้เรียงจาก*ทุกทีม*ใน DB จริง
+- **Filter ประเภททีมกรองฝั่ง server** — ครอบคลุมทุกทีมใน DB ไม่ใช่แค่ที่โหลดมาแล้ว
+  (แก้ข้อจำกัดของ V1.3) เปลี่ยน filter = โหลดหน้าแรกของประเภทนั้นใหม่
+- **Performance** — จาก 21 queries ต่อการโหลด (N+1 นับ counter ทีละทีม)
+  เหลือ 2 queries (RPC + ดึงข้อมูลอัศวินทั้งหน้าครั้งเดียว)
+
+### Notes
+- ต้องรัน SQL migration ก่อน deploy — หน้า Home เรียก RPC ใหม่ ถ้าไม่มีจะโหลดไม่ขึ้น
+
+---
+
+## [1.3.0] - 2026-07-18
+
+### Added
+- **ประเภททีม Defense 6 แบบ**: ทีมถึก / ทีมเวท / ทีมกาย / ทีมผสม / ทีมเดธ / ทีมอื่นๆ
+  (ค่าใน DB: `tank / magic / physical / hybrid / death / other` — แต่ละแบบมีสีประจำ)
+- **Filter chips ในหน้า Home** — กรอง Top Defense Teams ตามประเภททีม (ทั้งหมด + 6 ประเภท)
+- **Badge ประเภททีมบนการ์ด Defense** — ทีมที่ยังไม่แท็ก (`team_type = null`) แสดงเป็น "ทีมอื่นๆ"
+- **Admin เปลี่ยนประเภททีมได้จากหน้า Home** — คลิก badge บนการ์ด → dropdown เลือกประเภท
+  (ผ่าน RPC `set_defense_team_type` เช็คสิทธิ์ admin ฝั่ง DB)
+- **เลือกประเภทตอนสร้าง defense ใหม่** — กด "+ Contribute Counter" กับทีมที่ยังไม่มีในระบบ
+  จะเจอ `TeamTypeSelectModal` ให้เลือกประเภทก่อน แล้วค่อยเข้า Contribute flow ตามปกติ
+- **SQL migration** (`supabase_migration_v1.3_team_type.sql`)
+  - คอลัมน์ `gvg_defenses.team_type` + CHECK constraint
+  - RPC `set_defense_team_type(p_defense_id, p_team_type)` (security definer + `is_admin()`)
+
+### Notes
+- ต้องรัน SQL migration ก่อน deploy ไม่งั้น insert defense ใหม่จะ error (ไม่มีคอลัมน์)
+- Filter กรองจากรายการ Top 20 ที่โหลดมาแล้ว (client-side)
+
+---
+
 ## [1.2.0] - 2026-07-18
 
 ### Added

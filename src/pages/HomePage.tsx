@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import KnightAvatar from '../components/gvg/KnightAvatar'
@@ -7,16 +7,27 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import type { TeamType } from '../types/index'
 import { TEAM_TYPES, TEAM_TYPE_LABELS, TEAM_TYPE_COLORS, normalizeTeamType } from '../types/index'
 
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 20
+
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface KnightBrief {
+  id: string
+  name: string
+  element: string
+  image_url?: string
+}
 
 interface DefenseRow {
   id: string
-  leader_skill?: string
+  leader_skill?: string | null
   team_type?: string | null
   created_at: string
-  leader:  { id: string; name: string; element: string; image_url?: string }
-  knight2: { id: string; name: string; element: string; image_url?: string }
-  knight3?: { id: string; name: string; element: string; image_url?: string } | null
+  leader:  KnightBrief
+  knight2: KnightBrief
+  knight3?: KnightBrief | null
   counter_count: number
 }
 
@@ -43,43 +54,80 @@ export default function HomePage() {
   const navigate = useNavigate()
   const { isAdmin } = useAdmin()
   const [defenses,        setDefenses]        = useState<DefenseRow[]>([])
-  const [loading,         setLoading]         = useState(true)
+  const [totalCount,      setTotalCount]      = useState(0)
+  const [loading,         setLoading]         = useState(true)   // โหลดหน้าแรก
+  const [loadingMore,     setLoadingMore]     = useState(false)  // กดโหลดเพิ่ม
   const [deleteDefenseId, setDeleteDefenseId] = useState<string | null>(null)
   const [typeFilter,      setTypeFilter]      = useState<TypeFilter>('all')
 
-  useEffect(() => {
-    const fetchDefenses = async () => {
-      const { data } = await supabase
-        .from('gvg_defenses')
-        .select(`
-          id,
-          leader_skill,
-          team_type,
-          created_at,
-          leader:knights!gvg_defenses_leader_id_fkey(id, name, element, image_url),
-          knight2:knights!gvg_defenses_knight2_id_fkey(id, name, element, image_url),
-          knight3:knights!gvg_defenses_knight3_id_fkey(id, name, element, image_url)
-        `)
-        .limit(20)
-        .order('created_at', { ascending: false })
+  /**
+   * โหลดทีม 1 หน้า (PAGE_SIZE ทีม) จาก RPC — เรียง counter มากสุดก่อนจากทุกทีมใน DB
+   * แล้วดึงข้อมูลอัศวินทั้งหน้าใน query เดียว (แทน N+1 แบบเดิม)
+   */
+  const fetchPage = useCallback(async (offset: number, filter: TypeFilter, append: boolean) => {
+    const { data: rows, error } = await supabase.rpc('get_defenses_page', {
+      p_limit:     PAGE_SIZE,
+      p_offset:    offset,
+      p_team_type: filter === 'all' ? null : filter,
+    })
 
-      if (data) {
-        const withCounts = await Promise.all(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data.map(async (def: any) => {
-            const { count } = await supabase
-              .from('gvg_counters')
-              .select('*', { count: 'exact', head: true })
-              .eq('defense_id', def.id)
-            return { ...def, counter_count: count ?? 0 }
-          })
-        )
-        setDefenses(withCounts.sort((a, b) => b.counter_count - a.counter_count))
-      }
-      setLoading(false)
+    if (error || !rows) {
+      console.error('Error fetching defenses:', error)
+      return
     }
-    fetchDefenses()
+
+    // รวม knight ids ทั้งหน้า → ดึงครั้งเดียว
+    const knightIds = new Set<string>()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rows.forEach((r: any) => {
+      knightIds.add(r.leader_id)
+      knightIds.add(r.knight2_id)
+      if (r.knight3_id) knightIds.add(r.knight3_id)
+    })
+
+    const km: Record<string, KnightBrief> = {}
+    if (knightIds.size > 0) {
+      const { data: knightRows } = await supabase
+        .from('knights')
+        .select('id, name, element, image_url')
+        .in('id', Array.from(knightIds))
+      knightRows?.forEach((k: KnightBrief) => { km[k.id] = k })
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapped: DefenseRow[] = (rows as any[])
+      .filter(r => km[r.leader_id] && km[r.knight2_id])   // กันข้อมูลอัศวินหาย
+      .map(r => ({
+        id:            r.id,
+        leader_skill:  r.leader_skill,
+        team_type:     r.team_type,
+        created_at:    r.created_at,
+        leader:        km[r.leader_id],
+        knight2:       km[r.knight2_id],
+        knight3:       r.knight3_id ? km[r.knight3_id] ?? null : null,
+        counter_count: Number(r.counter_count),
+      }))
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setTotalCount(rows.length > 0 ? Number((rows as any[])[0].total_count) : (append ? -1 : 0))
+    setDefenses(prev => append ? [...prev, ...mapped] : mapped)
   }, [])
+
+  // โหลดหน้าแรกใหม่ทุกครั้งที่เปลี่ยน filter
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchPage(0, typeFilter, false).then(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [typeFilter, fetchPage])
+
+  async function handleLoadMore() {
+    setLoadingMore(true)
+    await fetchPage(defenses.length, typeFilter, true)
+    setLoadingMore(false)
+  }
 
   async function handleDeleteDefense() {
     if (!deleteDefenseId) return
@@ -90,37 +138,45 @@ export default function HomePage() {
 
     if (!error) {
       setDefenses(prev => prev.filter(d => d.id !== deleteDefenseId))
+      setTotalCount(prev => Math.max(0, prev - 1))
     }
     setDeleteDefenseId(null)
   }
 
-  // Admin: เปลี่ยน team_type ผ่าน RPC (security definer เช็ค is_admin ฝั่ง DB)
+  // Admin: เปลี่ยน team_type ผ่าน RPC (เช็ค is_admin ฝั่ง DB)
   async function handleSetTeamType(defenseId: string, teamType: TeamType) {
     const { error } = await supabase.rpc('set_defense_team_type', {
       p_defense_id: defenseId,
       p_team_type:  teamType,
     })
-    if (!error) {
+    if (error) {
+      console.error('Error setting team type:', error)
+      return
+    }
+
+    if (typeFilter !== 'all' && teamType !== typeFilter) {
+      // เปลี่ยนไปประเภทที่ไม่ตรง filter ปัจจุบัน → เอาออกจากลิสต์
+      setDefenses(prev => prev.filter(d => d.id !== defenseId))
+      setTotalCount(prev => Math.max(0, prev - 1))
+    } else {
       setDefenses(prev => prev.map(d =>
         d.id === defenseId ? { ...d, team_type: teamType } : d
       ))
-    } else {
-      console.error('Error setting team type:', error)
     }
   }
 
-  // Client-side filter — null/ค่าที่ไม่รู้จัก ถูก normalize เป็น 'other'
-  const filteredDefenses = typeFilter === 'all'
-    ? defenses
-    : defenses.filter(d => normalizeTeamType(d.team_type) === typeFilter)
+  const hasMore = defenses.length < totalCount
 
   return (
     <div style={{ backgroundColor: '#0a0c14', minHeight: '100vh', padding: '2rem 1.5rem' }}>
-      {/* Shimmer keyframes */}
+      {/* Shimmer + spin keyframes */}
       <style>{`
         @keyframes shimmer {
           0%   { background-position:  200% 0 }
           100% { background-position: -200% 0 }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg) }
         }
       `}</style>
 
@@ -134,19 +190,18 @@ export default function HomePage() {
           <div style={{ height: '1px', width: '48px', background: 'linear-gradient(to left, transparent, #f59e0b)' }} />
         </div>
         <h1 style={{ fontSize: '28px', fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>
-          Top Defense Teams
+          Defense Teams
         </h1>
         <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
-          คลิกที่ทีมเพื่อดู Counter
+          เรียงตามจำนวน Counter · คลิกที่ทีมเพื่อดู Counter
         </p>
       </div>
 
-      {/* ── Team type filter chips (V1.3) ─────────────────────────────────── */}
+      {/* ── Team type filter chips ─────────────────────────────────────────── */}
       <div style={{
         display: 'flex', flexWrap: 'wrap', gap: '8px',
         justifyContent: 'center', marginBottom: '1.5rem',
       }}>
-        {/* ALL chip */}
         <button
           onClick={() => setTypeFilter('all')}
           style={{
@@ -194,49 +249,102 @@ export default function HomePage() {
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {loading ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-            {Array.from({ length: 20 }).map((_, i) => <SkeletonCard key={i} />)}
+            {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : defenses.length === 0 ? (
-          /* ── Empty state (ไม่มีข้อมูลเลย) ─────────────────────────────── */
+          /* ── Empty state ─────────────────────────────────────────────── */
           <div style={{
             textAlign: 'center', padding: '64px 24px',
             background: '#111827', borderRadius: '16px',
             border: '1px solid #1e293b', maxWidth: '400px', margin: '0 auto',
           }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🛡️</div>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>
+              {typeFilter === 'all' ? '🛡️' : '🔍'}
+            </div>
             <p style={{ fontSize: '16px', color: '#6b7280', margin: '0 0 8px' }}>
-              ยังไม่มีข้อมูลทีม Defense
+              {typeFilter === 'all'
+                ? 'ยังไม่มีข้อมูลทีม Defense'
+                : `ยังไม่มีทีมประเภท "${TEAM_TYPE_LABELS[typeFilter]}"`}
             </p>
             <p style={{ fontSize: '13px', color: '#374151', margin: 0 }}>
-              เป็นคนแรกที่เพิ่มทีม Counter ในหน้า GVG
-            </p>
-          </div>
-        ) : filteredDefenses.length === 0 ? (
-          /* ── Empty state (filter แล้วไม่เจอ) ──────────────────────────── */
-          <div style={{
-            textAlign: 'center', padding: '48px 24px',
-            background: '#111827', borderRadius: '16px',
-            border: '1px solid #1e293b', maxWidth: '400px', margin: '0 auto',
-          }}>
-            <div style={{ fontSize: '36px', marginBottom: '12px' }}>🔍</div>
-            <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
-              ไม่มีทีมประเภท "{typeFilter !== 'all' ? TEAM_TYPE_LABELS[typeFilter] : ''}" ใน Top 20
+              {typeFilter === 'all'
+                ? 'เป็นคนแรกที่เพิ่มทีม Counter ในหน้า GVG'
+                : 'ลองเลือกประเภทอื่น หรือกด "ทั้งหมด"'}
             </p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-            {filteredDefenses.map((defense, index) => (
-              <DefenseCard
-                key={defense.id}
-                defense={defense}
-                index={index}
-                onClick={() => navigate('/gvg?defense_id=' + defense.id)}
-                isAdmin={isAdmin}
-                onDelete={() => setDeleteDefenseId(defense.id)}
-                onSetTeamType={handleSetTeamType}
-              />
-            ))}
-          </div>
+          <>
+            {/* จำนวนที่แสดง / ทั้งหมด */}
+            <div style={{ textAlign: 'right', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', color: '#4b5563' }}>
+                แสดง {defenses.length} / {totalCount} ทีม
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+              {defenses.map((defense, index) => (
+                <DefenseCard
+                  key={defense.id}
+                  defense={defense}
+                  index={index}
+                  onClick={() => navigate('/gvg?defense_id=' + defense.id)}
+                  isAdmin={isAdmin}
+                  onDelete={() => setDeleteDefenseId(defense.id)}
+                  onSetTeamType={handleSetTeamType}
+                />
+              ))}
+            </div>
+
+            {/* ── Load More ───────────────────────────────────────────── */}
+            {hasMore && (
+              <div style={{ textAlign: 'center', marginTop: '24px' }}>
+                <button
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  style={{
+                    padding: '10px 32px',
+                    borderRadius: '99px',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    cursor: loadingMore ? 'wait' : 'pointer',
+                    border: '1.5px solid #f59e0b55',
+                    background: '#f59e0b12',
+                    color: '#f59e0b',
+                    transition: 'all 0.15s',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                  onMouseEnter={e => {
+                    if (!loadingMore) {
+                      e.currentTarget.style.borderColor = '#f59e0b'
+                      e.currentTarget.style.background = '#f59e0b22'
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = '#f59e0b55'
+                    e.currentTarget.style.background = '#f59e0b12'
+                  }}
+                >
+                  {loadingMore ? (
+                    <>
+                      <span style={{
+                        display: 'inline-block',
+                        width: '14px', height: '14px',
+                        borderRadius: '50%',
+                        border: '2px solid #f59e0b44',
+                        borderTopColor: '#f59e0b',
+                        animation: 'spin 0.8s linear infinite',
+                      }} />
+                      กำลังโหลด...
+                    </>
+                  ) : (
+                    <>โหลดเพิ่ม ({totalCount - defenses.length} ทีม)</>
+                  )}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -263,7 +371,6 @@ function TeamTypeBadge({ defenseId, teamType, isAdmin, onSetTeamType }: {
   const containerRef = useRef<HTMLDivElement>(null)
   const color = TEAM_TYPE_COLORS[teamType]
 
-  // ปิด dropdown เมื่อคลิกนอกพื้นที่
   useEffect(() => {
     if (!menuOpen) return
     function handleOutside(e: MouseEvent) {
@@ -279,7 +386,7 @@ function TeamTypeBadge({ defenseId, teamType, isAdmin, onSetTeamType }: {
     <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
       <button
         onClick={e => {
-          e.stopPropagation()               // กันไม่ให้ card navigate
+          e.stopPropagation()
           if (isAdmin) setMenuOpen(prev => !prev)
         }}
         title={isAdmin ? 'คลิกเพื่อเปลี่ยนประเภททีม' : undefined}
@@ -301,7 +408,6 @@ function TeamTypeBadge({ defenseId, teamType, isAdmin, onSetTeamType }: {
         {isAdmin && <span style={{ fontSize: '8px' }}>▾</span>}
       </button>
 
-      {/* Admin dropdown */}
       {isAdmin && menuOpen && (
         <div style={{
           position: 'absolute',
@@ -423,7 +529,6 @@ function DefenseCard({ defense, index, onClick, isAdmin, onDelete, onSetTeamType
           {index + 1}
         </div>
 
-        {/* Team type badge (V1.3) */}
         <TeamTypeBadge
           defenseId={defense.id}
           teamType={normalizeTeamType(defense.team_type)}
@@ -439,7 +544,7 @@ function DefenseCard({ defense, index, onClick, isAdmin, onDelete, onSetTeamType
           padding: '2px 8px',
           color: '#6b7280',
           marginLeft: 'auto',
-          marginRight: isAdmin ? '32px' : '0',   // เว้นที่ให้ปุ่มลบของ admin
+          marginRight: isAdmin ? '32px' : '0',
         }}>
           {defense.counter_count} counter{defense.counter_count !== 1 ? 's' : ''}
         </span>
